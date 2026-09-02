@@ -1,2 +1,5 @@
 .DS_Store
 skills-lock.json
+# installer output from testing `npx skills add` inside this checkout
+.agents/
+.claude/skills/
