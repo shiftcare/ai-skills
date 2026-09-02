@@ -1,0 +1,10 @@
+{"type":"thread.started","thread_id":"thread_invented"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_invented_3","type":"mcp_tool_call","server":"shiftcare","tool":"whoami","arguments":{},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_invented_0","type":"agent_message","text":"Working on it."}}
+{"type":"item.completed","item":{"id":"item_invented_1","type":"command_execution","command":"/bin/zsh -lc \"sed -n '1,20p' /invented/SKILL.md\"","aggregated_output":"---\nname: invented-skill\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_invented_2","type":"command_execution","command":"/bin/zsh -lc \"invented-command\"","aggregated_output":"Invented command failure\n","exit_code":1,"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_invented_3","type":"mcp_tool_call","server":"shiftcare","tool":"whoami","arguments":{},"result":{"content":"[{'type': 'text', 'text': '{\"person\":{\"name\":\"Invented Person\"}}'}]","structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_invented_4","type":"mcp_tool_call","server":"shiftcare","tool":"list_invented_records","arguments":{"limit":1},"result":null,"error":{"message":"Invented MCP failure"},"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_invented_5","type":"agent_message","text":"Connected and verified."}}
+{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":800,"cache_write_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":10}}
