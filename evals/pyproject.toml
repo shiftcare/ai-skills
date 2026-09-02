@@ -6,3 +6,6 @@ dependencies = ["deepeval==4.2.0"]
 
 [dependency-groups]
 dev = ["pytest"]
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py"]

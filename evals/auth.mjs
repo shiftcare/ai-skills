@@ -6,6 +6,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 
+// Refresh tokens rotate on every use, so a request that hangs loses the login. Fail fast instead.
+const fetchFn = (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
+
 const evalsDir = path.dirname(fileURLToPath(import.meta.url));
 
 export function validAccessToken(tokens, now = Date.now()) {
@@ -142,14 +145,14 @@ async function login(serverUrl) {
   const callback = await callbackServer();
   try {
     const provider = new FileOAuthProvider(serverUrl, callback.redirectUrl);
-    const result = await auth(provider, { serverUrl });
+    const result = await auth(provider, { serverUrl, fetchFn });
     if (result === 'AUTHORIZED') {
       console.log('Already logged in; tokens refreshed');
       return;
     }
     if (result !== 'REDIRECT') throw new Error('OAuth login did not redirect');
     const authorizationCode = await callback.code;
-    if (await auth(provider, { serverUrl, authorizationCode }) !== 'AUTHORIZED') {
+    if (await auth(provider, { serverUrl, authorizationCode, fetchFn }) !== 'AUTHORIZED') {
       throw new Error('OAuth login was not authorized');
     }
     console.log(`Logged in; tokens saved to evals/.auth/${serverUrl.hostname}.json`);
@@ -184,7 +187,7 @@ async function token(serverUrl) {
   };
 
   try {
-    if (await auth(provider, { serverUrl }) !== 'AUTHORIZED') throw new Error('needs login');
+    if (await auth(provider, { serverUrl, fetchFn }) !== 'AUTHORIZED') throw new Error('needs login');
     const tokens = await provider.tokens();
     if (!tokens?.access_token) throw new Error('needs login');
     printAccessToken(tokens);
