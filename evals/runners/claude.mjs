@@ -1,6 +1,9 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { pathToFileURL } from 'node:url';
 
+// Local calendar date, matching what the agent's own environment reports.
+const localDate = () => new Date().toLocaleDateString('en-CA');
+
 export function captureToolTrace(message, state) {
   if (message.type === 'assistant') {
     for (const block of message.message.content) {
@@ -50,7 +53,7 @@ export async function runClaude({ prompt, model, cwd, skill, mcp }) {
     // Without this, the SDK also loads the user's claude.ai connectors.
     strictMcpConfig: true,
     systemPrompt: mcp
-      ? `You are a helpful assistant for a ShiftCare care-management account. Today's date is ${new Date().toISOString().slice(0, 10)}. Use the available tools to answer the user's question.`
+      ? `You are a helpful assistant for a ShiftCare care-management account. Today's date is ${localDate()}. Use the available tools to answer the user's question.`
       : 'Answer the evaluation prompt directly. Return only the requested output.',
     ...(mcp ? {
       // MCP tools otherwise need interactive approval and fail with a permission error.

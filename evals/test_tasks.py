@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import date, timedelta
 import json
 
 from deepeval import assert_test
@@ -59,7 +59,7 @@ def test_task(case, model, mcp, workspaces):
             None,
         )
         assert shift_call is not None
-        tomorrow = (datetime.now(UTC).date() + timedelta(days=1)).isoformat()
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
         assert tomorrow in json.dumps(shift_call["input"])
 
     test_case = LLMTestCase(
