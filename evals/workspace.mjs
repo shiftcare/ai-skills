@@ -1,0 +1,38 @@
+import { mkdir, readlink, symlink } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const evalsDir = path.dirname(fileURLToPath(import.meta.url));
+
+async function ensureSymlink(source, destination) {
+  await mkdir(path.dirname(destination), { recursive: true });
+  const target = path.relative(path.dirname(destination), source);
+  try {
+    await symlink(target, destination, 'dir');
+  } catch (error) {
+    if (error?.code !== 'EEXIST' || await readlink(destination) !== target) throw error;
+  }
+}
+
+export async function ensureWorkspaces(root = path.resolve(evalsDir, '..')) {
+  const workspaceRoot = path.join(root, 'evals', '.workspace');
+  const withSkill = path.join(workspaceRoot, 'with-skill');
+  const noSkill = path.join(workspaceRoot, 'no-skill');
+  const skill = path.join(root, 'skills', 'shiftcare-mcp');
+
+  await mkdir(noSkill, { recursive: true });
+  await ensureSymlink(skill, path.join(withSkill, '.claude', 'skills', 'shiftcare-mcp'));
+  await ensureSymlink(skill, path.join(withSkill, '.agents', 'skills', 'shiftcare-mcp'));
+
+  return { 'with-skill': withSkill, 'no-skill': noSkill };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  ensureWorkspaces().then(
+    (workspaces) => console.log(JSON.stringify(workspaces)),
+    (error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    },
+  );
+}
