@@ -4,7 +4,7 @@ description: Check whether a ShiftCare account is set up properly and report a s
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "2.5.0"
+  version: "2.5.1"
 ---
 
 # ShiftCare onboarding check
@@ -329,9 +329,9 @@ Example of the tone to use:
 
 > **Health: 12 / 100 — Not started.**
 >
-> Two clients, but both came with the account: "Sample" (Freddy Mercury) and "Margaret
-> Demo". The 70 shifts are all the recurring sample, nobody has ever clocked on, and there
-> is $343.20 of billable work sitting uninvoiced.
+> You have two clients, but both of them came with the account: "Sample" (Freddy Mercury)
+> and "Margaret Demo". All 70 shifts come from the sample recurring shift. Nobody has
+> clocked on yet, and there is $343.20 of billable work waiting to be invoiced.
 
 ## Offering to fix gaps
 
@@ -345,3 +345,9 @@ When writes are allowed, treat each fix as a separate task: collect the details,
 resolved values back to the user (for a shift: client, staff, date, start and end time
 with time zone, shift type), and call the write tool only after the user has said yes.
 Never batch several writes behind one confirmation.
+
+Keep a running list of what you create — what it was, its name, and the ID the tool
+returned — and read it back when the user asks what changed or wants to start over. Offer
+to undo what the tools can undo: a shift can be cancelled, a care plan archived. Clients,
+staff and pay items have no delete tool, so say so and point at the web app instead of
+leaving the user to guess.
