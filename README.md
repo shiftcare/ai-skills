@@ -22,6 +22,14 @@ Update installed skills later:
 npx skills update
 ```
 
+## Validate
+
+Run every static skill check locally with:
+
+```
+uv run --with skills-ref==0.1.1 scripts/validate_skills.py
+```
+
 ## Skills
 
 | Skill | What it does |
