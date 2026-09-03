@@ -1,5 +1,5 @@
 import pytest
-from deepeval.test_case import LLMTestCase
+from deepeval.test_case import LLMTestCase, ToolCall
 
 from judge import ClaudeJudge
 import metrics
@@ -81,6 +81,22 @@ def test_agentic_metrics_include_completion_efficiency_and_arguments(monkeypatch
     names = [metric.__name__ for metric in metrics.agentic_metrics(judge, "Invented task")]
 
     assert names == ["Task Completion", "Step Efficiency", "Argument Correctness"]
+
+
+def test_argument_correctness_ignores_infrastructure_and_argumentless_tools():
+    test_case = LLMTestCase(
+        input="Invented input",
+        actual_output="Invented output",
+        tools_called=[
+            ToolCall(name="command_execution", input_parameters={"command": "invented"}),
+            ToolCall(name="whoami", input_parameters={}),
+            ToolCall(name="list_teams", input_parameters={"page": 2}),
+        ],
+    )
+
+    filtered = metrics._argument_correctness_case(test_case)
+
+    assert [call.name for call in filtered.tools_called] == ["list_teams"]
 
 
 def test_agent_trace_preserves_tool_order_and_arguments():

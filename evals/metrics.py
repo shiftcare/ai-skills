@@ -1,7 +1,7 @@
 import json
 
 from deepeval.metrics import (
-    ArgumentCorrectnessMetric,
+    ArgumentCorrectnessMetric as DeepEvalArgumentCorrectnessMetric,
     BaseMetric,
     StepEfficiencyMetric,
     TaskCompletionMetric,
@@ -31,6 +31,23 @@ def to_deepeval_tool_calls(tool_calls):
             )
         )
     return calls
+
+
+def _argument_correctness_case(test_case):
+    return test_case.model_copy(
+        update={
+            "tools_called": [
+                call
+                for call in test_case.tools_called
+                if call.name not in SKILL_LOADING_TOOLS and call.input_parameters
+            ]
+        }
+    )
+
+
+class ArgumentCorrectnessMetric(DeepEvalArgumentCorrectnessMetric):
+    def measure(self, test_case, *args, **kwargs):
+        return super().measure(_argument_correctness_case(test_case), *args, **kwargs)
 
 
 def agentic_metrics(judge, task):
