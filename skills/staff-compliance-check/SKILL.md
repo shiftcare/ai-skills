@@ -68,7 +68,7 @@ Two calls, once per sweep, whatever the scope:
 
 1. Call `list_staff` with `per_page=20`, page 1. Read `_metadata.total_count` and `total_pages`.
 2. **Cost guard.** Each staff member costs one further call — `list_staff_qualifications` takes a single `staff_id` and has no account-wide form. Before sweeping more than about 25 staff, tell the user the number of calls it will take and offer to narrow the scope by name or role first. Wait for their answer. A 300-staff account is roughly 315 calls and a large amount of token spend.
-3. Page through every page. Keep staff whose `onboarding_status` is `active`; there is no server-side filter for this. Say how many you excluded as inactive.
+3. Page through every page, then filter on `onboarding_status` yourself; there is no server-side filter. Keep `active`. Exclude `invited` and `pending` — they have not started. **`onboarding_status` can also be `null`**, which is not the same as inactive: treat null as unknown, keep the staff member in the sweep, and label them so the user can correct it. Report the excluded count broken down by status, never as one lump.
 4. Per staff member, call `list_staff_qualifications`.
 
 Do not sweep `list_staff_files` account-wide. Every document row carries a long signed file URL, so an account-wide document listing costs far more tokens than it returns in value, and rows with `user_id: null` are account-level documents that belong to no staff member. Never echo a file URL into the output; they are temporary and unreadable to the user.
@@ -87,7 +87,7 @@ Per qualification record, in this order. The first match wins.
 
 **Missing** is a separate bucket, computed against a requirement list rather than a record:
 
-- Always: every qualification with `require_for_all_carers: true` that the staff member has no record for.
+- Always: every qualification with `require_for_all_carers: true` that the staff member has no record for. The flag says *carers*, so do not count these against office-only roles — an administrator with no Driver Licence record is not a gap. Report office and admin staff in a separate line ("not counted, office role") rather than in the missing bucket, and name the roles you treated as office so a wrong call is visible.
 - Framework mode: every checklist requirement with no matching qualification in the account's catalog, or with a matching qualification the staff member holds no record for.
 
 Compare dates as calendar dates in the account's time zone. `expires_at` and `verified_at` come back as UTC timestamps; converting a UTC timestamp against a local date without conversion moves credentials in and out of the expired bucket at the day boundary.
