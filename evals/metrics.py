@@ -1,6 +1,11 @@
 import json
 
-from deepeval.metrics import BaseMetric
+from deepeval.metrics import (
+    ArgumentCorrectnessMetric,
+    BaseMetric,
+    StepEfficiencyMetric,
+    TaskCompletionMetric,
+)
 from deepeval.test_case import ToolCall
 
 
@@ -26,6 +31,34 @@ def to_deepeval_tool_calls(tool_calls):
             )
         )
     return calls
+
+
+def agentic_metrics(judge, task):
+    return [
+        TaskCompletionMetric(task=task, model=judge, async_mode=False),
+        StepEfficiencyMetric(model=judge, async_mode=False),
+        ArgumentCorrectnessMetric(model=judge, async_mode=False),
+    ]
+
+
+def agent_trace(test_case, tool_calls):
+    return {
+        "name": "agent",
+        "type": "agent",
+        "input": test_case.input,
+        "output": test_case.actual_output,
+        "children": [
+            {
+                "name": call["name"],
+                "type": "tool",
+                "input": {"inputParameters": call.get("input") or {}},
+                "output": call.get("output"),
+                "error": "Tool call failed" if call.get("isError") else None,
+                "children": [],
+            }
+            for call in tool_calls
+        ],
+    }
 
 
 class ToolResultIntegrity(BaseMetric):

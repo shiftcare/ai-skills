@@ -1,6 +1,8 @@
 import pytest
 from deepeval.test_case import LLMTestCase
 
+from judge import ClaudeJudge
+import metrics
 from metrics import ConnectionProtocol, ToolResultIntegrity
 
 
@@ -70,3 +72,57 @@ def test_connection_protocol(names, expected):
     metric = ConnectionProtocol([{"name": name} for name in names])
 
     assert metric.measure(TEST_CASE) == expected
+
+
+def test_agentic_metrics_include_completion_efficiency_and_arguments(monkeypatch):
+    monkeypatch.delenv("EVAL_JUDGE_MODEL", raising=False)
+    judge = ClaudeJudge({"no-skill": "/tmp/invented-workspace"})
+
+    names = [metric.__name__ for metric in metrics.agentic_metrics(judge, "Invented task")]
+
+    assert names == ["Task Completion", "Step Efficiency", "Argument Correctness"]
+
+
+def test_agent_trace_preserves_tool_order_and_arguments():
+    trace = metrics.agent_trace(
+        TEST_CASE,
+        [
+            {
+                "name": "whoami",
+                "input": {},
+                "output": "Invented account",
+                "isError": False,
+            },
+            {
+                "name": "list_teams",
+                "input": {"page": 2},
+                "output": "Invented team",
+                "isError": False,
+            },
+        ],
+    )
+
+    assert trace == {
+        "name": "agent",
+        "type": "agent",
+        "input": "Invented input",
+        "output": "Invented output",
+        "children": [
+            {
+                "name": "whoami",
+                "type": "tool",
+                "input": {"inputParameters": {}},
+                "output": "Invented account",
+                "error": None,
+                "children": [],
+            },
+            {
+                "name": "list_teams",
+                "type": "tool",
+                "input": {"inputParameters": {"page": 2}},
+                "output": "Invented team",
+                "error": None,
+                "children": [],
+            },
+        ],
+    }

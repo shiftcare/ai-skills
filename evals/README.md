@@ -2,6 +2,8 @@
 
 This local DeepEval harness compares the `shiftcare-mcp` skill across Claude and Codex models and evaluates three read-only MCP tasks.
 
+Each scenario measures tool correctness, task completion, step efficiency, argument correctness, response quality, and tool-result integrity. Connection verification also checks that `whoami` is the first MCP call. The model-based metrics make several judge calls per scenario, so narrow runs are useful while iterating.
+
 ## Setup
 
 Requires Node 22, npm, Python 3.12, `uv`, the Codex CLI, and access to a ShiftCare MCP server.
@@ -39,6 +41,12 @@ The default models are `sonnet,haiku,gpt-5.6-terra,gpt-5.6-luna`. Override them 
 ```sh
 EVAL_MODELS=haiku ./evals/run.sh -k connection
 EVAL_MODELS=sonnet,gpt-5.6-luna ./evals/run.sh
+```
+
+Sonnet judges responses by default. Override the judge when Claude is unavailable:
+
+```sh
+EVAL_JUDGE_MODEL=gpt-5.6-luna EVAL_MODELS=gpt-5.6-luna ./evals/run.sh -k connection
 ```
 
 Run only the offline unit tests from `evals/`:

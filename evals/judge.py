@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from deepeval.models import DeepEvalBaseLLM
 
@@ -8,7 +9,7 @@ from runners import run_agent
 class ClaudeJudge(DeepEvalBaseLLM):
     def __init__(self, workspaces):
         self.cwd = workspaces["no-skill"]
-        super().__init__("sonnet")
+        super().__init__(os.getenv("EVAL_JUDGE_MODEL", "sonnet"))
 
     def load_model(self):
         return self.name
@@ -16,7 +17,7 @@ class ClaudeJudge(DeepEvalBaseLLM):
     def generate(self, prompt):
         return run_agent(
             prompt,
-            "sonnet",
+            self.name,
             cwd=self.cwd,
             skill=None,
             mcp=None,
@@ -26,4 +27,5 @@ class ClaudeJudge(DeepEvalBaseLLM):
         return await asyncio.to_thread(self.generate, prompt)
 
     def get_model_name(self):
-        return "Claude Agent SDK (sonnet)"
+        runner = "Codex CLI" if self.name.startswith("gpt-") else "Claude Agent SDK"
+        return f"{runner} ({self.name})"

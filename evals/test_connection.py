@@ -4,7 +4,13 @@ from deepeval.test_case import LLMTestCase, SingleTurnParams, ToolCall
 import pytest
 
 from judge import ClaudeJudge
-from metrics import ConnectionProtocol, ToolResultIntegrity, to_deepeval_tool_calls
+from metrics import (
+    ConnectionProtocol,
+    ToolResultIntegrity,
+    agent_trace,
+    agentic_metrics,
+    to_deepeval_tool_calls,
+)
 from runners import run_agent
 
 
@@ -53,6 +59,7 @@ def test_connection(case, skill, model, mcp, workspaces):
         token_cost=result["usage"]["costUsd"],
         completion_time=result["durationMs"] / 1000,
     )
+    test_case._trace_dict = agent_trace(test_case, tool_calls)
     judge = ClaudeJudge(workspaces)
     metrics = [
         ToolCorrectnessMetric(
@@ -78,6 +85,7 @@ def test_connection(case, skill, model, mcp, workspaces):
             async_mode=False,
         ),
         ToolResultIntegrity(tool_calls),
+        *agentic_metrics(judge, case["ask"]),
     ]
     if case.get("whoami_first"):
         metrics.append(ConnectionProtocol(tool_calls))
