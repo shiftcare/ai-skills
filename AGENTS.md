@@ -17,5 +17,5 @@
 
 ## Before committing
 
-- `uvx --from skills-ref skills-ref validate skills/<name>` passes for every changed skill.
+- `uvx --from skills-ref agentskills validate skills/<name>` passes for every changed skill.
 - `npx skills add <path to this checkout>` into a scratch project installs, and the agent lists the skill.
