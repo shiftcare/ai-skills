@@ -36,6 +36,7 @@ uv run --with skills-ref==0.1.1 scripts/validate_skills.py
 | --- | --- |
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
 | [`onboarding-check`](skills/onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
+| [`shiftcare-morning-rundown`](skills/shiftcare-morning-rundown/SKILL.md) | Read-only daily sweep of yesterday's and today's shifts, grouped by urgency with a next step per finding. |
 
 ## Requirements
 
