@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.validate_skills import validate_repository
+from scripts.validate_skills import COMPATIBILITY_TEMPLATE, validate_repository
 
 
 class ValidateSkillsTest(unittest.TestCase):
@@ -28,14 +28,20 @@ metadata:
   version: "1.2.3"
 ---
 See [the guide](references/guide.md).
-Call `check_skill_compatibility` once per task before any other ShiftCare tool,
-using the frontmatter `name` and `metadata.version`.
-Handle `up_to_date`, `update_available`,
-`update_required`, `unrecognized`, and `retired`.
-Run `npx skills update valid-skill` when an update is required.
 """
+                + COMPATIBILITY_TEMPLATE.read_text().format(skill="valid-skill")
             )
             self.assertEqual(validate_repository(skills), [])
+
+            (valid / "SKILL.md").write_text(
+                (valid / "SKILL.md")
+                .read_text()
+                .replace("stop and warn", "stop and tell")
+            )
+            self.assertIn(
+                "compatibility check does not match scripts/compatibility_check.md",
+                "\n".join(validate_repository(skills)),
+            )
 
             unsafe = skills / "unsafe-skill"
             unsafe.mkdir()
@@ -82,7 +88,10 @@ description: Duplicate YAML keys are invalid.
 
             errors = "\n".join(validate_repository(skills))
             self.assertIn("metadata.version must be a valid SemVer string", errors)
-            self.assertIn("compatibility check is missing", errors)
+            self.assertIn(
+                "compatibility check does not match scripts/compatibility_check.md",
+                errors,
+            )
             self.assertIn("missing local reference: scripts/missing.py", errors)
             self.assertIn("missing local reference: references/also-missing.md", errors)
             self.assertIn("invalid reference: http://[", errors)

@@ -24,17 +24,7 @@ RESOURCE_PATH = re.compile(
 )
 INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 UPDATE_COMMAND = re.compile(r"\bnpx\s+skills\s+update\b")
-COMPATIBILITY_MARKERS = (
-    "`check_skill_compatibility`",
-    "once per task before any other ShiftCare tool",
-    "frontmatter `name`",
-    "`metadata.version`",
-    "`up_to_date`",
-    "`update_available`",
-    "`update_required`",
-    "`unrecognized`",
-    "`retired`",
-)
+COMPATIBILITY_TEMPLATE = Path(__file__).with_name("compatibility_check.md")
 
 
 def referenced_paths(text: str) -> tuple[set[str], set[str]]:
@@ -134,14 +124,12 @@ def validate_update_commands(
 
 
 def validate_compatibility_check(body: str, skill_dir: Path) -> list[str]:
-    required = (
-        *COMPATIBILITY_MARKERS,
-        f"`npx skills update {skill_dir.name}`",
-    )
-    missing = [marker for marker in required if marker not in body]
-    if not missing:
+    required = COMPATIBILITY_TEMPLATE.read_text(encoding="utf-8").format(
+        skill=skill_dir.name
+    ).strip()
+    if required in body:
         return []
-    return [f"compatibility check is missing: {', '.join(missing)}"]
+    return ["compatibility check does not match scripts/compatibility_check.md"]
 
 
 def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
