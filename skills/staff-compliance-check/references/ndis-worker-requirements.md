@@ -45,7 +45,7 @@ has explicitly chosen the NDIS check.
 | PPE training | ppe, personal protective equipment | — |
 | Manual handling | manual handling, manual task, safe handling, lifting, hoist, transfer | Only where the role involves physical transfers, hoists, or mobility equipment. |
 | Assist with medication (HLTHPS006) | medication, hlthps006, assist with medication, medication administration, medication management | Only when prompting, administering, or monitoring medication. |
-| High intensity support skills | high intensity support, high intensity skills, complex support, peg feeding, enteral feeding, tracheostomy, ventilation, subcutaneous, seizure, stoma, complex bowel, diabetes management | Only when the provider delivers a high-intensity daily personal activity. |
+| High intensity support skills | high intensity support, high intensity skills, complex support, peg feeding, enteral feeding, tracheostomy, ventilation, subcutaneous, seizure, stoma, bowel care, catheter, suctioning, insulin, diabetes care | Only when the provider delivers a high-intensity daily personal activity. |
 | Participant-specific high-intensity sign-off | hidpa, high intensity daily personal, participant-specific sign, participant specific sign-off | Only when the provider delivers a high-intensity daily personal activity. |
 | Mealtime / dysphagia training | mealtime, dysphagia, mealtime management, swallowing | Only when a participant has a mealtime-management plan or dysphagia. |
 | Driver licence and vehicle insurance | driver licence, driver license, drivers licence, vehicle insurance, driving | Only when transporting participants. |
@@ -62,7 +62,7 @@ expectation for disability support work, not a legislated requirement — say so
 | Certificate III Individual Support, or equivalent | cert iii, certificate iii, cert 3, certificate 3, individual support | Support and disability workers |
 | Relevant tertiary qualification | tertiary qualification, relevant tertiary, bachelor, degree, diploma | Allied health, nurses, behaviour support practitioners, support coordinators |
 | AHPRA registration | ahpra, registration board, registered practitioner | Registered health practitioners |
-| Behaviour Support Practitioner suitability (PBS Capability Framework) | bsp suitability, pbs capability, positive behaviour support capability, behaviour support practitioner suitability | Behaviour support practitioners |
+| Behaviour Support Practitioner suitability (PBS Capability Framework) | positive behaviour support, behaviour support practitioner, bsp suitability, pbs capability | Behaviour support practitioners |
 
 ## Requirements with nothing to check against
 
