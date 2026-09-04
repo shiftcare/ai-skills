@@ -4,7 +4,7 @@ description: Connect an AI agent to the ShiftCare MCP server and verify the conn
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Connect to the ShiftCare MCP server
@@ -60,7 +60,25 @@ The first tool call opens a ShiftCare login page. The user may be asked to pick 
 3. If the user belongs to more than one account, ask which one they want to work in.
 4. Make one small read-only call, such as listing teams. If it returns data, the connection is working.
 
-Report the result to the user in plain language: which account you are connected to, whether access is read-only, and that you are ready.
+Report the result as a table, then say what to do next. Do not bury the read-only answer in a sentence — it is the thing the user most needs to know before asking for anything.
+
+```text
+ShiftCare connection — Australia · 4 September 2026
+```
+
+| Check | Result |
+| --- | --- |
+| Account | Northside Community Care |
+| Signed in as | Alex Mercer (Admin) |
+| MCP available | Yes |
+| Write actions | Off — read-only |
+| Test call | `list_teams` returned 4 teams |
+
+| Priority | Suggested action | Why | Where |
+| --- | --- | --- | --- |
+| 1 | Ask an Admin to enable Allow Write Actions | Every tool is read-only until they do, so nothing can be created or changed | Account → AI Settings |
+
+When everything is already in order, say so in one line and give no suggestions table — an empty table reads as a problem. When the user belongs to several accounts, list them as rows and ask which one to work in rather than choosing for them.
 
 ## Troubleshooting
 

@@ -187,20 +187,35 @@ Manual handling                    Clear             18/18   name: Manual Handli
 ### Staff view — worst first
 
 ```text
-Staff compliance — expiry check, 90-day window
-28 staff swept · 3 excluded (2 invited, 1 pending) · 1 unknown status
-
-Expired               4
-Expiring within 90d   7
-Requires attachment   2
-Missing (mandatory)   5
-Unverified           11
-
-Expired
-  Jordan Ellis    First Aid Certificate       expired 12 Aug 2026
-  Sam Whitfield   Police Check                expired 3 Sep 2026
-...
+Staff compliance — expiry check · 28 staff · 90-day window · 4 September 2026
+3 excluded (2 invited, 1 pending) · 1 unknown status
 ```
+
+| Finding | Count |
+| --- | --- |
+| Expired | 4 |
+| Expiring within 90 days | 7 |
+| Requires attachment | 2 |
+| Missing (account mandatory) | 5 |
+| Unverified | 11 |
+
+| Staff | Qualification | Status | Date |
+| --- | --- | --- | --- |
+| Jordan Ellis | First Aid Certificate | Expired | 12 Aug 2026 (23 days ago) |
+| Sam Whitfield | Police Check | Expiring | 2 Nov 2026 (59 days) |
+
+### Suggestions — always end here
+
+Order by consequence: expired credentials on rostered staff first, then setup gaps that hide future expiries, then verification backlog. Name where each fix is made.
+
+| Priority | Suggested action | Why | Where |
+| --- | --- | --- | --- |
+| 1 | Renew First Aid for Jordan Ellis | Expired 23 days ago and rostered this week | Staff profile → Qualifications |
+| 2 | Turn on expiry tracking for Police Check | Recorded with no expiry date, so it will never appear in this report | Account → Qualifications |
+| 3 | Create a qualification for NDIS Code of Conduct | Not configured, so no staff member can be recorded against it | Account → Qualifications |
+| 4 | Merge the 3 Working With Children entries | Records split across duplicates make the same person look both covered and missing | Account → Qualifications |
+
+Close with a **Not checked** line: staff you skipped and why, calls that failed, and the note that organisation-level obligations are outside this sweep.
 
 Rules for the output:
 
@@ -214,6 +229,7 @@ Rules for the output:
 - Name every staff member you skipped, excluded, or could not read.
 - No compliance verdict. No score. No "you're audit-ready".
 - Offer the detail per staff member on request instead of dumping every record for a large account.
+- Follow the shared output conventions in the `shiftcare-basics` skill: heading line, summary table, detail tables, suggestions, then what was not checked.
 - Say once that organisation-level obligations — provider registration, key-personnel suitability, insurances and policies held by the business rather than by a worker — are outside this sweep. A clean staff report is not a clean audit.
 
 ## Fixing what the report finds
