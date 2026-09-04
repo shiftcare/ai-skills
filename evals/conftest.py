@@ -10,6 +10,13 @@ EVALS_DIR = Path(__file__).parent
 DEFAULT_MODELS = "sonnet,haiku,gpt-5.6-terra,gpt-5.6-luna"
 
 
+class McpConfig(dict):
+    def __repr__(self):
+        return repr({**self, "token": "<redacted>"})
+
+    __str__ = __repr__
+
+
 def env_value(name):
     value = os.environ.get(name)
     if value:
@@ -72,4 +79,4 @@ def mcp():
         token = completed.stdout.strip()
     if not token:
         pytest.exit("No MCP token available. Run: cd evals && node auth.mjs login")
-    return {"url": url, "token": token}
+    return McpConfig(url=url, token=token)
