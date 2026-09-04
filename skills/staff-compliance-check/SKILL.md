@@ -28,11 +28,11 @@ Run before any other tool call. If any step fails, stop and tell the user what i
 
 A partial sweep reported as a full one is worse than no sweep. If pagination breaks, a call fails, or you had to skip staff, name the staff you skipped in the output.
 
-## Step 1 — ask two questions first
+## Step 1 — ask which industry, before reading anything
 
-Ask both before reading anything. Never infer either one.
+**The industry question comes first — before the catalog, before any staff, before any other tool call.** It decides which checklist applies and therefore what the whole report means. Never infer it from the account's region, name, client mix, or qualification names. Ask, and wait for the answer.
 
-**Scope.** One staff member, or the whole account?
+> Which industry does this account operate in — NDIS, aged care, or neither? And should I check one staff member or the whole account?
 
 **Framework.** Offer exactly these:
 
@@ -44,7 +44,9 @@ Ask both before reading anything. Never infer either one.
 
 An account running both SIL and home care needs both checks, and each staff member reported against the framework matching the work they do. Offer that rather than forcing one choice. The two frameworks also overlap on screening: a current NDIS Worker Screening Check can stand in for an aged-care police certificate, so do not report the same worker as missing both.
 
-Do not offer a framework check based on the account's region, name, or client mix. The user chooses. If the user asks "are we NDIS compliant?", still ask them to confirm the NDIS check is what they want, then answer with the caveats in the reference file rather than a verdict.
+If the user asks "are we NDIS compliant?", still confirm the NDIS check is what they want, then answer with the caveats in the reference file rather than a verdict.
+
+**Scope.** One staff member, or the whole account? Ask alongside the industry, but note that Step 3 below answers a useful question for the whole account on two calls, whatever scope they pick.
 
 **Expiry window.** Default 90 days. State the number in the output every time. Accept an override between 7 and 365 days ("check with a 30-day window"). The account's own configured window may differ from 90 days and is not readable through the MCP server, so never claim the number you used is the account's setting.
 
@@ -60,7 +62,65 @@ Two calls, once per sweep, whatever the scope:
 
 `list_staff_qualifications` returns `qualification_id` but no name. Build the id-to-name map from the catalog and use names in every line of output. Never show a bare qualification ID to the user.
 
-## Step 3 — sweep
+## Step 3 — match the industry checklist to the account
+
+The product has no built-in industry checklists — qualification categories and names are free-form per account. So the checklist lives in this skill and has to be matched to whatever the account happens to call things.
+
+1. Read the reference file for the chosen framework. Each requirement lists match terms.
+2. For each requirement, find the account qualifications whose name or category contains one of those terms, case-insensitively.
+3. **Show the user the mapping once, before reporting.** List each requirement with the account qualification you matched it to, and every requirement you could not match. Ask them to correct it. Reuse the corrected mapping for the rest of the conversation, and do not re-ask.
+4. An unmatched requirement is not automatically a gap. It may be tracked outside ShiftCare. Report it as "not tracked in this account" and let the user decide, rather than as a failure.
+
+**Role scoping.** Framework requirements split into ones every worker holds and ones that apply only to staff delivering direct client support. `list_staff` returns `role` and sometimes `job_title`. Use `job_title` when it is set, otherwise `role`. Do not report an office administrator as missing First Aid. Say in the output which staff you treated as frontline and which as office, so a wrong call is visible and correctable.
+
+**Conditional requirements.** Some requirements apply only when a trigger is true — transporting participants, supporting anyone under 18, assisting with medication. ShiftCare does not track those triggers. Report each conditional requirement as a check the user makes: "Applies only if you transport participants — confirm this applies to your service." Never present a conditional requirement as an unmet obligation.
+
+## Step 4 — report what the account needs to configure
+
+Answer this **before** sweeping any staff. It costs nothing beyond the two catalog calls already made, and it often matters more than the staff report: a requirement the account has never configured as a qualification cannot be tracked for anybody, so every staff member would show a gap for a reason that has nothing to do with them.
+
+Skip this section only when the user chose the plain expiry check — with no industry checklist there is no requirement list to compare the catalog against.
+
+From the mapping in Step 3, split the chosen checklist three ways:
+
+- **Tracked** — a qualification exists in the account for this requirement. Name it, so the user can see what you matched.
+- **Not configured** — no qualification in the account matches. This is an account setup gap, not a staff gap. The provider cannot record or expire this credential until someone creates the qualification type. List these first; they are the actionable ones.
+- **Duplicates** — several qualifications match the same requirement. Accounts accumulate near-identical entries over time, and split records across them mean a staff member can look compliant on one and missing on the other. Name every duplicate and suggest consolidating.
+
+Then flag the tracking flags that weaken the catalog, whether or not a framework was chosen:
+
+- A qualification matched to a requirement with `require_document: false` — the account will accept the credential with no evidence attached.
+- A qualification matched to a requirement with `require_expiry: false` — the credential can be recorded with no expiry date, so it will never appear in an expiry report. This is the most common reason a compliance report looks clean when it is not.
+- A requirement every worker holds, matched to a qualification with `require_for_all_carers: false` — nobody will be reported as missing it.
+
+Report it like this, then ask whether to continue into the staff sweep:
+
+```text
+Account setup — NDIS worker check
+Advisory checklist. Confirm against the NDIS Commission.
+
+Not configured (6)
+  100-point ID / proof of identity      no qualification in this account
+  NDIS Worker Orientation Module        no qualification in this account
+  ...
+
+Duplicates (1)
+  Working With Children Check           3 entries: "Working with Children Check",
+                                        "Working with Children Check (WWCC)",
+                                        "Working with children's check"
+
+Tracked but weakly (2)
+  First Aid Certificate                 no expiry required — will never expire-report
+  Police Check                          not required for all carers — nobody flagged as missing
+
+Tracked (9)
+  NDIS Worker Screening Check       ->  NDIS Worker Check (NDISWC)
+  ...
+```
+
+Never present "not configured" as non-compliance. The provider may track that credential in another system entirely. It means this skill cannot see it, and the report says so.
+
+## Step 5 — sweep the staff
 
 **Single staff member.** Resolve the person with `list_staff` (`filter_by_name`), confirm you have the right person by name before proceeding, then call `list_staff_qualifications` with their `staff_id`. Also call `list_staff_files` with their `user_id` for document evidence.
 
@@ -73,7 +133,7 @@ Two calls, once per sweep, whatever the scope:
 
 Do not sweep `list_staff_files` account-wide. Every document row carries a long signed file URL, so an account-wide document listing costs far more tokens than it returns in value, and rows with `user_id: null` are account-level documents that belong to no staff member. Never echo a file URL into the output; they are temporary and unreadable to the user.
 
-## Step 4 — work out each status
+## Step 6 — work out each status
 
 Per qualification record, in this order. The first match wins.
 
@@ -92,26 +152,43 @@ Per qualification record, in this order. The first match wins.
 
 Compare dates as calendar dates in the account's time zone. `expires_at` and `verified_at` come back as UTC timestamps; converting a UTC timestamp against a local date without conversion moves credentials in and out of the expired bucket at the day boundary.
 
-## Step 5 — matching a framework checklist to the account
+## Step 7 — report
 
-The product has no built-in industry checklists — qualification categories and names are free-form per account. So the checklist lives in this skill and has to be matched to whatever the account happens to call things.
+Two views of the same sweep. In framework mode lead with the requirement view; in plain expiry mode there is no requirement list, so lead with the staff view.
 
-1. Read the reference file for the chosen framework. Each requirement lists match terms.
-2. For each requirement, find the account qualifications whose name or category contains one of those terms, case-insensitively.
-3. **Show the user the mapping once, before reporting.** List each requirement with the account qualification you matched it to, and every requirement you could not match. Ask them to correct it. Reuse the corrected mapping for the rest of the conversation, and do not re-ask.
-4. An unmatched requirement is not automatically a gap. It may be tracked outside ShiftCare. Report it as "not tracked in this account" and let the user decide, rather than as a failure.
+### Requirement view — one row per requirement
 
-**Role scoping.** Framework requirements split into ones every worker holds and ones that apply only to staff delivering direct client support. `list_staff` returns `role` and sometimes `job_title`. Use `job_title` when it is set, otherwise `role`. Do not report an office administrator as missing First Aid. Say in the output which staff you treated as frontline and which as office, so a wrong call is visible and correctable.
+Each requirement gets a status derived from its own counts, and its **own denominator**: only the staff the requirement applies to. A frontline-only requirement is not out of ten staff when six of them are office. Say the denominator on every row.
 
-**Conditional requirements.** Some requirements apply only when a trigger is true — transporting participants, supporting anyone under 18, assisting with medication. ShiftCare does not track those triggers. Report each conditional requirement as a check the user makes: "Applies only if you transport participants — confirm this applies to your service." Never present a conditional requirement as an unmet obligation.
+| Status | When |
+| --- | --- |
+| Clear | Every in-scope staff member holds a valid record. |
+| Needs attention | At least one in-scope staff member is expired, expiring, unverified, or missing an attachment. |
+| Missing | No in-scope staff member holds a record at all. |
+| Manual review | Nothing in ShiftCare to verify against — experience, professional development. Never report these as missing. |
+| Not configured | No qualification in the account matches this requirement, from Step 4. |
 
-## Step 6 — report
+Say **how** each requirement was matched — by qualification name, by category, or by a record of another kind — so a wrong match is visible rather than buried. Where a requirement can be satisfied more than one way, credit the strongest evidence and say which one counted: an NDIS Worker Screening Check standing in for an aged-care police certificate should read as satisfied by the screening check, not as two separate half-answers.
 
-Worst first. Lead with the counts, then the detail.
+```text
+NDIS worker check — 24 in-scope staff, 90-day window
+Advisory checklist. Confirm against the NDIS Commission.
+
+Requirement                        Status            Held    Matched via
+NDIS Worker Screening Check        Needs attention   21/24   name: NDIS Worker Check (NDISWC)
+First Aid & CPR                    Needs attention   14/18   name: First Aid Certificate
+                                                             frontline only, 6 office staff not counted
+Working With Children Check        Needs attention   9/24    3 duplicate qualifications — see setup
+NDIS Code of Conduct               Not configured    —       no qualification in this account
+Relevant experience                Manual review     —       nothing to verify against
+Manual handling                    Clear             18/18   name: Manual Handling
+```
+
+### Staff view — worst first
 
 ```text
 Staff compliance — expiry check, 90-day window
-28 active staff (3 inactive excluded)
+28 staff swept · 3 excluded (2 invited, 1 pending) · 1 unknown status
 
 Expired               4
 Expiring within 90d   7
@@ -127,6 +204,9 @@ Expired
 
 Rules for the output:
 
+- Give the requirement view's denominator as `held / in scope`, never a bare percentage.
+- Say which requirements were satisfied by something other than their obvious qualification, and what counted.
+
 - Names, not IDs. Qualification names, not qualification IDs.
 - Every date as a calendar date the user recognises, plus how many days for anything expiring.
 - State the window you used, and that it may not match the account's own configured window.
@@ -134,6 +214,7 @@ Rules for the output:
 - Name every staff member you skipped, excluded, or could not read.
 - No compliance verdict. No score. No "you're audit-ready".
 - Offer the detail per staff member on request instead of dumping every record for a large account.
+- Say once that organisation-level obligations — provider registration, key-personnel suitability, insurances and policies held by the business rather than by a worker — are outside this sweep. A clean staff report is not a clean audit.
 
 ## Fixing what the report finds
 
