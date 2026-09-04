@@ -28,6 +28,10 @@ metadata:
   version: "1.2.3"
 ---
 See [the guide](references/guide.md).
+Call `check_skill_compatibility` once per task before any other ShiftCare tool,
+using the frontmatter `name` and `metadata.version`.
+Handle `up_to_date`, `update_available`,
+`update_required`, `unrecognized`, and `retired`.
 Run `npx skills update valid-skill` when an update is required.
 """
             )
@@ -78,6 +82,7 @@ description: Duplicate YAML keys are invalid.
 
             errors = "\n".join(validate_repository(skills))
             self.assertIn("metadata.version must be a valid SemVer string", errors)
+            self.assertIn("compatibility check is missing", errors)
             self.assertIn("missing local reference: scripts/missing.py", errors)
             self.assertIn("missing local reference: references/also-missing.md", errors)
             self.assertIn("invalid reference: http://[", errors)
