@@ -36,6 +36,8 @@ uv run --with skills-ref==0.1.1 scripts/validate_skills.py
 | --- | --- |
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
 | [`onboarding-check`](skills/onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
+| [`shiftcare-create-shift`](skills/shiftcare-create-shift/SKILL.md) | Create a one-off or recurring shift from a plain-language request, with mandatory confirmation before the write. |
+| [`shiftcare-cancel-shift`](skills/shiftcare-cancel-shift/SKILL.md) | Cancel a shift, choosing correctly between charging the client and not paying the carer. |
 
 ## Requirements
 
