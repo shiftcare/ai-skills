@@ -37,6 +37,7 @@ uv run --with skills-ref==0.1.1 scripts/validate_skills.py
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
 | [`shiftcare-basics`](skills/shiftcare-basics/SKILL.md) | Understand ShiftCare concepts and pick the right MCP tools for a task. |
 | [`staff-compliance-check`](skills/staff-compliance-check/SKILL.md) | Sweep staff credentials for expired, expiring, missing and unverified records, optionally against an advisory NDIS or Australian aged-care checklist. |
+| [`onboarding-check`](skills/onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
 
 ## Requirements
 
