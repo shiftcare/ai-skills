@@ -73,6 +73,16 @@ Then call `whoami` for the account you will write to: `mcp_available` and
 Admin has to enable **Allow Write Actions** under **Account → AI Settings** — report that
 instead of trying. If the user belongs to more than one account, ask which one first.
 
+**Then confirm the write tool actually exists**, before resolving anything. `mcp_writes_enabled:
+true` does **not** mean cancel_shift_with_charge is available: tool exposure is gated per tool and
+independently of the account's Allow Write Actions setting. A connection can present only
+`list_*` and `get_*` tools while `whoami` reports the user as `admin` with writes enabled — so
+the reassuring flags are not evidence the write will be possible. Check that `cancel_shift_with_charge` and `cancel_shift_without_charge`
+is in the tool list. If it is missing, say that this account's connection does not expose
+shift cancellation and stop. Do not blame the account setting, and do not walk the user
+through the read-only steps first — the whole task is impossible, and finding that out after
+they have chosen a carer and a time wastes their effort.
+
 If ShiftCare tools are missing entirely, that is a connection problem: use the
 `shiftcare-mcp` skill.
 
@@ -94,6 +104,13 @@ Then call `list_shifts` with:
 Read the offset straight off the returned `start_at` (for example
 `2026-09-04T09:00:00+10:00`) and use that when you show the time back. Do not convert it to
 anything else; the user thinks in their own local wall clock.
+
+**The client names embedded in a shift are not the names the app shows.** The shift's
+`clients` array carries `first_name`/`family_name` only, and a client's `display_name` can be
+an entirely different name — a record whose `display_name` is "Mary Garcia" can have
+`first_name: "Milena"`, `family_name: "Wong"`. Before naming a client in the confirmation for
+a cancellation, resolve the `display_name` via `list_clients` with `filter_by_id`. Cancelling
+is not reversible from here, so the user has to recognise the person in your read-back.
 
 **One shift, or stop.** If the range returns more than one candidate, list them with times
 and staff and ask which. Cancelling the wrong shift is not recoverable from here — see
@@ -254,7 +271,8 @@ or replace the user wants, and only continue if the answer is cancel.
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
-| Write tools missing or refused | Allow Write Actions off, or user is not an Admin | An Admin enables it in AI Settings; stop until then |
+| Write tools missing, and `whoami` says writes are **off** | Allow Write Actions off, or user is not an Admin | An Admin enables it in AI Settings; stop until then |
+| Write tools missing while `whoami` says writes are **on** | This connection does not expose the write tool — gated per tool, separately from Allow Write Actions | Report exactly that. Nothing in this skill can work around it, and it is not the account setting |
 | Cancel rejected, shift looks fine | Shift is invoiced, or the timesheet is approved | Check `is_approved`/`approved_at`; otherwise the invoice — both are app-only to undo |
 | `Missing required arguments: from_date, to_date` | `list_shifts` always needs both, as `YYYY-MM-DD` | Supply a whole-day range covering the day and the day before |
 | Shift has no client names | `include_clients` was not passed | Re-read with `include_clients: true` |

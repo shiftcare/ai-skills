@@ -57,6 +57,16 @@ Then call `whoami` and read the account you will be writing to:
 - `role` must be `admin`. Any other role is read-only regardless of the account setting.
 - If the user belongs to more than one account, ask which one before resolving any name.
 
+**Then confirm the write tool actually exists**, before resolving anything. `mcp_writes_enabled:
+true` does **not** mean create_shift is available: tool exposure is gated per tool and
+independently of the account's Allow Write Actions setting. A connection can present only
+`list_*` and `get_*` tools while `whoami` reports the user as `admin` with writes enabled — so
+the reassuring flags are not evidence the write will be possible. Check that `create_shift` (and `create_recurring_shift` for a series)
+is in the tool list. If it is missing, say that this account's connection does not expose
+shift creation and stop. Do not blame the account setting, and do not walk the user
+through the read-only steps first — the whole task is impossible, and finding that out after
+they have chosen a carer and a time wastes their effort.
+
 Connection problems are not this skill's job. If ShiftCare tools are missing entirely, use
 the `shiftcare-mcp` skill.
 
@@ -65,11 +75,24 @@ the `shiftcare-mcp` skill.
 Use `list_clients` and `list_staff` with `filter_by_name`. Both are **partial** matches, so
 "Sam" matches Samantha and Sammy.
 
-- **Exactly one match** → use it, and keep the returned display name for the confirmation.
+- **Exactly one match** → use it, and keep the name to read back (see below).
 - **More than one match** → list them and ask. Never pick the first, the most recent, or the
   closest string. Two people named Mary is the normal case, not an edge case.
 - **No match** → say so and stop. Do not widen the search to a shorter fragment and guess;
   the client may be inactive, on another team, or simply not exist.
+
+**Read back the name the account actually shows, not the one you assembled.** For a client
+that is `display_name`; for a staff member it is `name`. Do not build a name out of
+`first_name` + `family_name`: `filter_by_name` matches `display_name`, and the two can be
+completely different people on paper. A real record matching "Mary" has
+`display_name: "Mary Garcia"` with `first_name: "Milena"` and `family_name: "Wong"`. Confirm
+that booking as "Milena Wong" and the user either rejects a correct shift or, worse, approves
+it believing it is for someone else. On staff records `first_name`/`family_name` are often
+`null` outright.
+
+**Cap the page size on `list_clients`.** Every client row carries its contacts, teams and
+service agreements inline, so a full page is very large. Pass `per_page` 3–10 with a
+`filter_by_name`; if the filter is that loose, tighten the filter rather than raising the page.
 
 Listings are permission-scoped. An empty result means "nothing this user can see", which is
 not the same as "does not exist" — say it that way.
@@ -152,16 +175,33 @@ Recurring needs more from the user, and it will not proceed without it:
 
 `start_at` / `end_at` describe the **first** occurrence and still need an explicit offset.
 
-## Step 5 — Check for clashes before you confirm
+## Step 5 — Check for clashes, and hand the decision back
 
 For each staff member you are about to assign, call `list_shifts` with `from_date` and
 `to_date` covering the shift's date **and the day before**. `list_shifts` filters on
 `start_at`, so a window matching the exact shift times misses an earlier-starting or overnight
 shift that still overlaps.
 
-Compare the returned `start_at`/`end_at` against the requested window yourself. Any overlap
-goes into the confirmation as a named conflict, with the choice to proceed anyway or pick
-someone else. Never create over a clash silently.
+Compare the returned `start_at`/`end_at` against the requested window yourself.
+
+**A clash is never yours to resolve.** Do not create over it, do not quietly substitute
+another carer, and do not drop the carer to make the problem disappear. Stop, name the
+conflicting shift with its time and ID, and offer the three ways forward:
+
+1. **Go ahead anyway.** Sometimes deliberate — a short overlap between two nearby clients, or
+   a roster the coordinator intends to sort out by hand. Their call, not yours.
+2. **Use a different carer.** Ask who to consider. There is no tool that searches for free
+   staff, so you cannot produce a shortlist unprompted: ask for names, or for a team, then
+   `list_staff` that team and re-run this step for each candidate. Say that is what you are
+   doing rather than appearing to know who is free.
+3. **Create it without a carer.** The shift exists, vacant, and someone is assigned later —
+   often the right answer when the named carer is genuinely busy. Omit `staff_ids`.
+   **Not available for a recurring series**, which requires `staff_ids`; there, offer a
+   different carer or a one-off vacant shift instead.
+
+Then re-run this step for whoever they name, and only assemble the confirmation once no
+unaddressed clash remains. A clash the user has accepted stays visible in the confirmation as
+an accepted one — do not silently drop it once they have said yes.
 
 Leave and availability are not checked by this skill. If the user asks, read them with
 `list_leaves` and `list_availability_schedules` before confirming.
@@ -184,7 +224,8 @@ Ready to create this shift:
   Published:   yes — visible to Sarah on her roster
   Notify:      yes — Sarah gets a notification
 
-  Note: Sarah already has a shift 4:00 pm – 6:00 pm that day.
+  Accepted clash: Sarah already has shift #10098, 4:00 pm – 6:00 pm
+  that day. You asked to go ahead anyway.
 
 Create it?
 ```
@@ -202,7 +243,8 @@ Rules for this step:
 - **For a recurring series**, confirm the pattern and the count you expect:
   "every Monday from 7 Sep to 21 Dec — about 16 shifts".
 - **If anything is still unresolved, this message is not confirmation-ready.** Ask the
-  question instead.
+  question instead. An unaddressed clash counts as unresolved — that question belongs in
+  Step 5, not buried in this read-back.
 
 ## Step 7 — Write once, then verify
 
@@ -257,7 +299,8 @@ continue here if the answer is "create".
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
-| Write tools missing or refused | Allow Write Actions off, or user is not an Admin | An Admin enables it in AI Settings; stop until then |
+| Write tools missing, and `whoami` says writes are **off** | Allow Write Actions off, or user is not an Admin | An Admin enables it in AI Settings; stop until then |
+| Write tools missing while `whoami` says writes are **on** | This connection does not expose the write tool — gated per tool, separately from Allow Write Actions | Report exactly that. Nothing in this skill can work around it, and it is not the account setting |
 | `Feature not enabled` | That endpoint is not enabled for the account | For `list_account_locations`, continue without a location. For the create tools, stop — the v3 shift create endpoint has to be enabled for the account |
 | `Missing required arguments: from_date, to_date` | `list_shifts` always needs both, as `YYYY-MM-DD` | Supply a whole-day range |
 | Shift created at the wrong hour | Offset omitted, or taken from the wrong side of a DST change | Read the offset from a shift near the target date (Step 2), and check the stored time in Step 7 |
