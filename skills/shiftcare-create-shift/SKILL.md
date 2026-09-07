@@ -264,8 +264,52 @@ Verify and report what actually exists:
   series range, filter by that `program_id`, and report the count. If it is short of expected,
   say the rest are still being generated rather than reporting a failure.
 
-Report in plain language: what was created, when, for whom, with whom, and whether staff were
-notified. Include the returned `url` if there is one.
+Report the shift back in full — not "done", but the record as it now stands: shift ID, the
+stored `start_at`/`end_at` with their offset, client, staff, shift type, and the `url`.
+
+**Report `published` and `notify` as the server actually resolved them**, read from the
+response, not as you sent them. Where you omitted either, the server computed it from the
+account's settings, so the read-back is the only place the real answer exists. "Published:
+true — this is on their roster now" is the fact the user needs; "I left it to the default" is
+not.
+
+## Step 8 — Tell them what is left to do
+
+A created shift is rarely the finished job, and the next steps are not obvious from the
+booking. Offer them, shortest first, and be exact about which you can do and which you
+cannot — an offer you cannot honour is worse than no offer.
+
+**What you can do from here, if they want it:**
+
+- **Say whether the shift inherited any care plan work.** Call `list_shift_care_plan_goals`
+  and `list_shift_care_plan_tasks` for the new shift ID. These read what the client's care
+  plan already puts on this shift, so the worker's app will prompt for it. An **empty result
+  is the useful answer**: nothing will be prompted, which for a new client usually means the
+  care plan needs attention before the shift runs. Both can also come back empty because you
+  cannot see the plans, so say which you cannot rule out.
+- **Publish or notify later**, if the confirmation left them off — `update_shift`. Its client
+  and staff arrays replace assignments wholesale, so send only the flags.
+- **Add a description, break, travel km, or allowances** — also `update_shift`, and
+  `list_allowances` to find allowance IDs.
+- **Check whether a vacant shift is advertised** — `list_job_board_postings`, filtered by the
+  shift ID. Read-only.
+- **Record a progress note** — `create_progress_note`, but only once the shift has been
+  worked. Do not offer this for a future shift.
+
+**What has to happen in the app — say so plainly, do not offer to try:**
+
+- **Assigning a form to the client or the shift.** MCP is read-only for forms: it can list
+  submitted *responses* and nothing else. There is no tool to assign a form, and no tool to
+  list the account's forms at all, so you cannot even tell the user which forms exist. Point
+  them at the shift in the app.
+- **Advertising a vacant shift on the Job Board.** `create_shift`'s own description names
+  `create_job_board_posting`, but that tool is not exposed — only the read side is. Do not
+  promise a posting you cannot make.
+- **Price book, fund, pay group, per-shift travel billing, and additional charges** such as
+  transport or equipment. See below.
+
+If the shift was created vacant, **the outstanding job is assigning a carer**, and that is
+the one to lead with.
 
 ## What this skill will not do
 
