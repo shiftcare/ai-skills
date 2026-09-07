@@ -124,22 +124,30 @@ def normalize(source):
 
 
 def pairs_for(results):
-    pairs = []
+    return [
+        (with_skill, no_skill)
+        for _, with_skill, no_skill in comparisons_for(results)
+        if with_skill and no_skill
+    ]
+
+
+def comparisons_for(results):
+    comparisons = []
+    models = []
     for result in results:
-        if result["variant"] != "With skill":
-            continue
-        baseline = next(
-            (
-                other
-                for other in results
-                if other["model"] == result["model"]
-                and other["variant"] == "No skill"
-            ),
+        if result["model"] not in models:
+            models.append(result["model"])
+    for model in models:
+        with_skill = next(
+            (result for result in results if result["model"] == model and result["variant"] == "With skill"),
             None,
         )
-        if baseline:
-            pairs.append((result, baseline))
-    return pairs
+        no_skill = next(
+            (result for result in results if result["model"] == model and result["variant"] == "No skill"),
+            None,
+        )
+        comparisons.append((model, with_skill, no_skill))
+    return comparisons
 
 
 def number(value, kind="number"):
@@ -162,7 +170,7 @@ def comparison(with_value, without_value, higher_is_better, positive_word, negat
     if with_value == without_value:
         return "Same"
     if with_value == 0 or without_value == 0:
-        return "Improved" if (with_value > without_value) == higher_is_better else "Regressed"
+        return positive_word if (with_value > without_value) == higher_is_better else negative_word
     improved = (with_value > without_value) == higher_is_better
     ratio = (
         with_value / without_value
@@ -220,16 +228,17 @@ def render_overview(suites, all_results):
             f'<tr class="suite-row"><td colspan="{len(specs) + 2}"><a class="entity-id" href="#suite-{suite["id"].lower()}" data-view="case">{suite["id"]}</a> · Suite · {escape(suite["name"])}</td></tr>'
         )
         for case in suite["cases"]:
-            case_pairs = pairs_for(case["results"])
             rows.append(
                 f'<tr class="case-row"><td colspan="{len(specs) + 2}"><a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · Case · {escape(case["name"])}</td></tr>'
             )
-            if not case_pairs:
-                rows.append(
-                    f'<tr class="unavailable"><td colspan="{len(specs) + 2}"><strong>comparison unavailable</strong> — no matching With skill / No skill result for the same model.</td></tr>'
-                )
-                continue
-            for with_skill, no_skill in case_pairs:
+            for model, with_skill, no_skill in comparisons_for(case["results"]):
+                if not with_skill or not no_skill:
+                    present = with_skill or no_skill
+                    missing = "No skill" if with_skill else "With skill"
+                    rows.append(
+                        f'<tr class="unavailable"><td><a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · {escape(model)}<small><a href="#result-{present["id"].lower()}" data-case="{case["id"]}">{present["id"]}</a> {escape(present["variant"].lower())}</small></td><td colspan="{len(specs) + 1}"><strong>comparison unavailable</strong> — missing {missing} result.</td></tr>'
+                    )
+                    continue
                 cells = []
                 for key, _, kind, higher, positive, negative in specs:
                     with_value = result_value(with_skill, key)
@@ -322,11 +331,11 @@ def aggregate_impact(case_results):
         or spec[1] == "Response quality"
     ]
     cards = []
-    for key, label, _, higher, positive, negative in wanted:
+    for key, label, kind, higher, positive, negative in wanted:
         with_value = median([result_value(pair[0], key) for pair in pairs])
         without_value = median([result_value(pair[1], key) for pair in pairs])
         cards.append(
-            f'<div class="impact"><span>{escape(label)}</span><strong>{escape(comparison(with_value, without_value, higher, positive, negative))}</strong></div>'
+            f'<div class="impact"><span>{escape(label)}</span><strong>{escape(comparison(with_value, without_value, higher, positive, negative))}</strong><small>{number(with_value, kind)} / {number(without_value, kind)}</small></div>'
         )
     return "".join(cards)
 
@@ -368,7 +377,13 @@ def render_case(case, suite):
     specs = measure_specs(results)
     model_headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
     model_rows = []
-    for with_skill, no_skill in pairs:
+    for model, with_skill, no_skill in comparisons_for(results):
+        if not with_skill or not no_skill:
+            missing = "No skill" if with_skill else "With skill"
+            model_rows.append(
+                f'<tr class="unavailable"><td>{escape(model)}</td><td colspan="{len(specs) + 1}"><strong>comparison unavailable</strong> — missing {missing} result.</td></tr>'
+            )
+            continue
         cells = []
         for key, _, kind, higher, positive, negative in specs:
             with_value = result_value(with_skill, key)
