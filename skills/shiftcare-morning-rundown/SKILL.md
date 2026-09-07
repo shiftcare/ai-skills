@@ -20,8 +20,16 @@ run. This skill answers it in one pass and **never calls a write tool**.
 | "What needs my attention today?" — an operating account, this morning's problems | **this one** |
 | "Is my account set up properly?" — a new account, configuration gaps | `onboarding-check` |
 
-If the account turns out to have almost no real data, say so and offer `onboarding-check`
-instead of reporting an empty rundown as "all clear".
+If the account turns out to have almost no real data — a roster of nothing but the demo
+client the account was created with — say so and offer `onboarding-check` instead of
+reporting an empty rundown as "all clear".
+
+**But an empty window is not an empty account.** A quiet weekend, a public holiday, or a
+Monday before the roster is published all return zero shifts from a perfectly healthy
+account, and answering those with "your account looks unconfigured" is wrong. Separate the
+two before you say anything: zero shifts *and* no real clients or staff is a setup problem;
+zero shifts on an account that has both is simply a quiet day. Report the quiet day in one
+line, offer to widen the window, and stop.
 
 ## Before any tool call
 
@@ -213,14 +221,22 @@ fetch it when you actually have an expiry to report, and then look up just the i
 
 Two independent signals for the current week:
 
-- **Rate gaps, from the step 3 timesheet items.** An item with a null `pricebook_id`, or an
-  `amount` of zero on an item that clearly represents worked hours, will not price. These
-  are the rows that silently drop out of an invoice run. Report them as "gaps found in the
+- **Rate gaps, from the step 3 timesheet items.** An item with a null `pricebook_id` will
+  not price, and neither will an **`Hours` line** whose rate or amount is zero. These are
+  the rows that silently drop out of an invoice run.
+
+  **Do not flag every zero.** A priced, healthy shift routinely carries `Activity`,
+  `Additional`, `Travel Kms` and `Transport Kms` lines sitting at zero, simply because
+  nothing was claimed against them. Zero is their normal state. Flagging them turns every
+  shift in the account into an invoicing blocker, which is the fastest way to make this
+  report worthless — check the category before you call a zero a gap. Report them as "gaps found in the
   timesheets available", never as a clean bill for the whole week — the rows that have not
   landed yet cannot be checked.
 - **`list_invoiceable_items`** for the week, dates in the account time zone. Omit
   `client_id` to sweep every client, and page with the `next_cursor` it returns. Use
-  `estimated_total` as the figure to quote. This tool is **not published on every regional
+  `estimated_total` as the figure to quote. Each line item carries its own **`shift_id`**
+  and `service_date_in_account_time_zone`, so tie the amount back to the shift and name it
+  in the report rather than quoting a bare total. This tool is **not published on every regional
   server** — if it is absent, report invoicing from the rate gaps alone and say the totals
   could not be read.
 
