@@ -115,8 +115,9 @@ an entirely different name — a record whose `display_name` is "Mary Garcia" ca
 a cancellation, resolve the `display_name` via `list_clients` with `filter_by_id`. Cancelling
 is not reversible from here, so the user has to recognise the person in your read-back.
 
-**One shift, or stop.** If the range returns more than one candidate, list them with times
-and staff and ask which. Cancelling the wrong shift is not recoverable from here — see
+**One shift, or stop.** If the range returns more than one candidate, list them with times,
+staff and `account_location_id` resolved to a name, and ask which. On a multi-site account the
+location is often the only thing distinguishing two same-day shifts for the same client. Cancelling the wrong shift is not recoverable from here — see
 "What this skill cannot do".
 
 ## Step 2 — Check the shift can still be cancelled

@@ -106,9 +106,14 @@ the client's own plan — nobody chooses them per shift, and no MCP tool can set
 implies a control that does not exist. Report what the shift inherited afterwards instead, in
 Step 9.
 
-Do not ask about anything else unless the user raises it. Shift type defaults to `standard`,
-and location, facility, allowances, break time and travel are all optional and rarely
-intended — a wall of questions about them makes a two-line request feel like a form.
+Do not ask about anything else *here*. Shift type defaults to `standard`, and allowances,
+break time and travel are optional and rarely intended — a wall of questions about them makes
+a two-line request feel like a form.
+
+Location and facility are the exception, and they are deliberately not on the list above: you
+cannot ask about them yet, because you do not know whether the account has more than one to
+choose between. That question is Step 3's, once the listings have told you there is a real
+choice to make — asking "which location?" on a single-location account is noise.
 
 ## Step 2 — Resolve every name to an ID
 
@@ -141,47 +146,7 @@ A shift may legitimately have no staff. If the user has not named a carer ("add 
 week, I'll pick the carer"), create it **vacant** by omitting `staff_ids`. Do not choose
 someone. Note that recurring series cannot be vacant — see Step 5.
 
-## Step 3 — Get the account's UTC offset
-
-**The zone you need is the shift's location's zone, not the account's.** Server-side, an
-offset-less datetime is parsed in the resolved account location's own time zone, and the
-account setting's zone is only the fallback when that location has none. A location resolves
-even when no `account_location_id` is sent — the account's default location is used — so on a
-multi-location account the zone that interprets your input can differ from the account's own.
-This is the reason the explicit offset is not optional: it makes the question moot.
-
-`whoami` may report a `time_zone` for the account as an IANA name. **That is the account
-setting's zone — the fallback — so it is not proof of how a datetime will be read.** Use it to
-sanity-check, and where the account has one location, or its default location has no zone of
-its own, it is the right zone. Do not treat it as authoritative on a multi-location account.
-
-No MCP tool reports a location's zone. `list_account_locations` returns names and addresses
-but no zone, and on some accounts it is not enabled at all. So read the offset off an existing
-shift instead — preferring a shift at the same location as the one you are about to create,
-since a shift elsewhere can carry a different offset entirely:
-
-1. Call `list_shifts` with `from_date` and `to_date` (both `YYYY-MM-DD`) spanning a few days
-   **around the requested date**.
-2. Read the offset from a returned `start_at`, for example `2026-09-04T09:00:00+10:00` → `+10:00`.
-
-Take it from near the target date, not from today. Accounts in daylight-saving regions change
-offset mid-year, and a shift booked across the changeover with today's offset is wrong by an
-hour in exactly the way this step is meant to prevent.
-
-If that range comes back empty, **ask the user for their time zone or offset.** Guessing from
-the region is not good enough: a single account can have locations in Perth, Queensland,
-Melbourne and Hobart, which are three different offsets — and that spread is exactly why the
-account-level zone cannot answer for a particular shift.
-
-Then build the datetimes from the user's wall-clock time plus that offset:
-`"tomorrow 9am to 5pm"` with `+10:00` → `start_at: 2026-09-05T09:00:00+10:00`,
-`end_at: 2026-09-05T17:00:00+10:00`.
-
-**If `end_at` is earlier than `start_at` on the same date, stop and ask.** "9pm to 7am" is
-either an overnight shift, in which case `end_at` belongs on the next day, or a typo. Never
-decide which on the user's behalf.
-
-## Step 4 — Learn the account's vocabulary
+## Step 3 — Learn the account's vocabulary, and settle the location
 
 Call `list_shift_types`. Each row has a `name` (what the user says) and a `type_string` (what
 the tool wants). Match the user's words against `name`, send `type_string`.
@@ -197,15 +162,85 @@ fixed rate instead of hourly). Setting the type does not set the flag. For "sche
 sleepover", propose both and confirm them as two separate lines. `live_in` behaves the same
 way for multi-day live-in shifts.
 
-Only if the user asked for them:
+### Always call `list_account_locations`, even when the user said nothing about location
 
-- `list_account_locations` → `account_location_id`. If it returns *Feature not enabled*, that
-  account does not expose locations; carry on without one.
-- `list_facilities` → `facility_id`.
-- `list_allowances` → `allowance_ids`.
+Omitting `account_location_id` does **not** mean the shift has no location. The server falls
+back to the account's default location, so a location is always chosen — either by you or
+silently for you. Two things follow from that, and the second is the important one:
+
+- **More than one location → ask which.** Show the names and let the user pick. Do not accept
+  the default on their behalf: on a multi-location account the default is frequently not the
+  one they meant, and a shift filed against the wrong site is wrong for rostering, reporting
+  and pay.
+- **Exactly one location → use it and say so in the confirmation.** No question needed; there
+  is nothing to choose between.
+- **`Feature not enabled` → that account does not expose locations.** Carry on without one and
+  say so. Nothing is selectable, so there is nothing to ask about.
+
+**Settle the location before you work out the offset**, because the location decides how an
+offset-less datetime is read and can decide what the local wall clock even means. An account
+with sites in Perth and Melbourne spans two offsets, so "9am" is not one instant until the
+location is known. That is why this step comes before Step 4, and why the answer belongs in
+the confirmation rather than left implicit.
+
+### Facilities work the same way
+
+Call `list_facilities` too. **More than one → ask which**, or whether the shift belongs to a
+facility at all, since a facility is optional in a way a location is not. Exactly one → offer
+it rather than assuming it; a single facility on the account does not mean every shift happens
+there. None, or the tool unavailable → carry on without one.
+
+`list_allowances` → `allowance_ids`, only if the user asked for allowances.
 
 `address` and `suburb_address` are free text stored on the shift. They do **not** look up or
-override `account_location_id` or `facility_id`, and those three IDs are not interchangeable.
+override `account_location_id` or `facility_id`, and those three IDs are not interchangeable —
+a location, a facility and an address are three separate things, and filling one does not
+fill the others.
+
+## Step 4 — Get the UTC offset for that location
+
+**The zone you need is the shift's location's zone, not the account's.** Server-side, an
+offset-less datetime is parsed in the resolved account location's own time zone, and the
+account setting's zone is only the fallback when that location has none. A location resolves
+even when no `account_location_id` is sent — the account's default location is used — so on a
+multi-location account the zone that interprets your input can differ from the account's own.
+This is the reason the explicit offset is not optional: it makes the question moot.
+
+`whoami` may report a `time_zone` for the account as an IANA name. **That is the account
+setting's zone — the fallback — so it is not proof of how a datetime will be read.** Use it to
+sanity-check, and where the account has one location, or its default location has no zone of
+its own, it is the right zone. Do not treat it as authoritative on a multi-location account.
+
+No MCP tool reports a location's zone — `list_account_locations` returns names and addresses
+and no zone at all. So having settled *which* location in Step 3, read its offset off an
+existing shift there, filtering the result by the `account_location_id` you chose. A shift at
+another site can carry a different offset entirely, so an unfiltered sample is not evidence
+about your location:
+
+1. Call `list_shifts` with `from_date` and `to_date` (both `YYYY-MM-DD`) spanning a few days
+   **around the requested date**.
+2. Keep only rows whose `account_location_id` matches the location you settled on. There is no
+   location filter on `list_shifts`, so do this yourself.
+3. Read the offset from a surviving `start_at`, for example `2026-09-04T09:00:00+10:00` →
+   `+10:00`.
+
+Take it from near the target date, not from today. Accounts in daylight-saving regions change
+offset mid-year, and a shift booked across the changeover with today's offset is wrong by an
+hour in exactly the way this step is meant to prevent.
+
+If nothing survives that filter, **ask the user for the time zone or offset of that
+location** — naming the location in the question, so they answer for the right site. Guessing
+from the region is not good enough: a single account can have locations in Perth, Queensland,
+Melbourne and Hobart, which are three different offsets, and that spread is exactly why
+neither the account zone nor another site's shift can answer for this one.
+
+Then build the datetimes from the user's wall-clock time plus that offset:
+`"tomorrow 9am to 5pm"` with `+10:00` → `start_at: 2026-09-05T09:00:00+10:00`,
+`end_at: 2026-09-05T17:00:00+10:00`.
+
+**If `end_at` is earlier than `start_at` on the same date, stop and ask.** "9pm to 7am" is
+either an overnight shift, in which case `end_at` belongs on the next day, or a typo. Never
+decide which on the user's behalf.
 
 ## Step 5 — Route one-off vs recurring
 
@@ -271,9 +306,10 @@ Ready to create this shift:
 
   Client:      Mary Chen (id 12345)
   Staff:       Sarah Okafor (id 67890)
-  When:        Fri 5 Sep 2026, 9:00 am – 5:00 pm (+10:00)
+  When:        Fri 5 Sep 2026, 9:00 am – 5:00 pm (+10:00 — Melbourne)
   Shift type:  Personal Care (standard)
-  Location:    Melbourne
+  Location:    Melbourne (you chose this; the account has 4)
+  Facility:    none — not a facility shift
   Sleepover:   no
   Published:   yes — visible to Sarah on her roster
   Notify:      yes — Sarah gets a notification
@@ -290,6 +326,9 @@ Rules for this step:
   specific booking you just assembled. Wait for an answer to this message.
 - **The user declines → create nothing.** No partial write, no "I'll create it unassigned
   instead", no retry with a tweak. Report that nothing was created and stop.
+- **Name the location explicitly, and say whether it was chosen or defaulted.** It is never
+  absent: it sets the site, and it sets the zone the time was built in. "Location: Default" is
+  a real answer worth reading back; silence is not.
 - **State `published` and `notify` in plain words**, as above. Both have server-side defaults
   (`published` is computed from the account's Publish Shifts setting and the shift type), so
   if you are leaving them to the default, say which way you expect it to resolve and that the
@@ -433,6 +472,6 @@ continue here if the answer is "create".
 | Write tools missing while `whoami` says writes are **on** | This connection does not expose the write tool — gated per tool, separately from Allow Write Actions | Report exactly that. Nothing in this skill can work around it, and it is not the account setting |
 | `Feature not enabled` | That endpoint is not enabled for the account | For `list_account_locations`, continue without a location. For the create tools, stop — the v3 shift create endpoint has to be enabled for the account |
 | `Missing required arguments: from_date, to_date` | `list_shifts` always needs both, as `YYYY-MM-DD` | Supply a whole-day range |
-| Shift created at the wrong hour | Offset omitted, or taken from the wrong side of a DST change | Read the offset from a shift near the target date (Step 3), and check the stored time in Step 8 |
+| Shift created at the wrong hour | Offset omitted, or taken from the wrong side of a DST change | Read the offset from a shift at that location near the target date (Step 4), and check the stored time in Step 8 |
 | Shift type rejected | A `type_string` that is not configured on this account | Re-read `list_shift_types` and ask the user to choose a listed name |
 | Recurring create rejected | Missing `recurrence_end_date`, `client_ids`, or `staff_ids` | Ask for the missing piece; none of them have a safe default |
