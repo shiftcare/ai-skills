@@ -220,6 +220,20 @@ Rules for this step:
 
 ## Step 6 — Write once, then verify
 
+**First, re-assert the account.** Call `whoami` again and check the `account_id` still matches
+the one you resolved every ID against. This is not paranoia about a stale cache: the
+connection can be re-authenticated mid-task — the user reconnects the server, a token
+refreshes, they sign in as someone else — and it can come back **as a different person on a
+different account**, with no error and nothing in any tool response to announce it. Observed
+in practice: one reconnect changed both the signed-in user and the account, and `list_accounts`
+then offered only the new one.
+
+Every ID you hold belongs to the account you read it from. Sent to a different account they
+are foreign keys: rejected if you are lucky, silently attached to an unrelated record with a
+colliding ID if you are not. If the `account_id` has changed, **stop**. Do not translate the
+IDs, do not re-resolve the names and carry on — tell the user the account changed, and start
+again from Step 1 so they can re-confirm against the account they are actually in.
+
 Call the chosen tool exactly once with `id` plus its own reason field.
 
 **Never blindly retry.** If the result is unclear, re-read the shift with `list_shifts` and
