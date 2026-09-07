@@ -15,10 +15,12 @@ class ValidateSkillsTest(unittest.TestCase):
 
     def test_repository_policy_checks(self):
         with tempfile.TemporaryDirectory() as directory:
-            skills = Path(directory)
+            repository = Path(directory)
+            skills = repository / "skills"
             self.assertIn(
                 "Missing skills directory", validate_repository(skills / "missing")[0]
             )
+            skills.mkdir()
             self.assertIn("No skills found", validate_repository(skills)[0])
 
             valid = skills / "valid-skill"
@@ -37,6 +39,14 @@ metadata:
 See [the guide](references/guide.md).
 """
                 + COMPATIBILITY_TEMPLATE.read_text().format(skill="valid-skill")
+            )
+            (repository / "public_ai_skills.yml").write_text(
+                """shared:
+  skills:
+    valid-skill:
+      minimum_skill_version: "1.0.0"
+      latest_skill_version: "1.2.3"
+"""
             )
             self.assertEqual(validate_repository(skills), [])
 
@@ -110,6 +120,73 @@ description: Duplicate YAML keys are invalid.
             )
             self.assertIn("duplicate skill name 'valid-skill'", errors)
             self.assertIn("Invalid YAML", errors)
+
+    def test_compatibility_manifest_must_match_published_skills(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            skills = repository / "skills"
+            skill = skills / "example-skill"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                """---
+name: example-skill
+description: An example skill.
+metadata:
+  version: "2.1.0"
+---
+"""
+            )
+            manifest = repository / "public_ai_skills.yml"
+
+            manifest.write_text(
+                """shared:
+  skills:
+    example-skill:
+      minimum_skill_version: "2.0.0"
+      latest_skill_version: "2.0.0"
+"""
+            )
+            self.assertIn(
+                "example-skill: latest_skill_version 2.0.0 does not match metadata.version 2.1.0",
+                validate_repository(skills),
+            )
+
+            manifest.write_text(
+                """shared:
+  skills:
+    retired-skill:
+      retired_on: "2026-01-03"
+"""
+            )
+            self.assertIn(
+                "example-skill: missing from public_ai_skills.yml",
+                validate_repository(skills),
+            )
+
+            manifest.write_text(
+                """shared:
+  skills:
+    example-skill:
+      minimum_skill_version: "2.2.0"
+      latest_skill_version: "2.1.0"
+    missing-skill:
+      minimum_skill_version: "1.0.0"
+      latest_skill_version: "1.0.0"
+    retired-skill:
+      retired_on: "2026-01-03"
+"""
+            )
+            errors = validate_repository(skills)
+            self.assertIn(
+                "example-skill: minimum_skill_version 2.2.0 is above latest_skill_version 2.1.0",
+                errors,
+            )
+            self.assertIn(
+                "missing-skill: active manifest entry has no skill directory", errors
+            )
+            self.assertNotIn(
+                "retired-skill: active manifest entry has no skill directory", errors
+            )
 
 
 if __name__ == "__main__":

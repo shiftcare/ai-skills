@@ -30,6 +30,10 @@ Run every static skill check locally with:
 uv run --with skills-ref==0.1.1 scripts/validate_skills.py
 ```
 
+[`public_ai_skills.yml`](public_ai_skills.yml) publishes the minimum and latest
+supported version of each skill. Validation fails if it drifts from the versions
+in the skill frontmatter.
+
 ## Skills
 
 | Skill | What it does |
