@@ -56,6 +56,18 @@ uv run pytest tests/
 node --test tests/
 ```
 
+## Report
+
+Generate the private local HTML report from the latest full run or an explicit result file:
+
+```sh
+cd evals
+uv run python report.py
+uv run python report.py .deepeval/.latest_test_run.json -o .deepeval/report.html
+```
+
+The HTML remains local and contains the full prompts, tool outputs, and judge reasons. “Results saved” uses the source result file's modification time, and Download JSON returns the complete source data.
+
 ## Privacy
 
 Evaluation results and judge reasons contain real account data. Keep `.deepeval/` local. Never run `deepeval view`, upload results, or share result files. Credentials remain in the ignored `.auth/` or `.env` files and must never be committed.

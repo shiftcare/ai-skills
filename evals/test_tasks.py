@@ -69,6 +69,10 @@ def test_task(case, model, mcp, workspaces):
         tools_called=to_deepeval_tool_calls(tool_calls),
         expected_tools=[ToolCall(name=case["expected_tool"])],
         additional_metadata={
+            "suite": "Read-only tasks",
+            "case": case["name"],
+            "model": model,
+            "skillVariant": "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],
             "turns": result["turns"],

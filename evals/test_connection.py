@@ -51,6 +51,10 @@ def test_connection(case, skill, model, mcp, workspaces):
         tools_called=to_deepeval_tool_calls(tool_calls),
         expected_tools=[ToolCall(name=name) for name in case["expected_tools"]],
         additional_metadata={
+            "suite": "Connection verification",
+            "case": case["name"],
+            "model": model,
+            "skillVariant": "With skill" if skill else "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],
             "turns": result["turns"],
