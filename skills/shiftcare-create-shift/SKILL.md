@@ -273,9 +273,21 @@ with `list_shifts` over that date, then decide.
 
 Verify and report what actually exists:
 
-- **One-off:** read the created shift back and report its stored `start_at`/`end_at`. Check the
-  offset in the response matches the wall-clock time the user asked for. This is the check that
-  catches a timezone mistake before the carer does.
+- **One-off:** read the created shift back and check the stored time is the wall clock the user
+  asked for. This is the check that catches a timezone mistake before the carer does — but do
+  it with `list_shifts`, not by eyeballing the create response, for two reasons.
+
+  **The create response renders times in UTC, `list_shifts` in the account's offset.** A shift
+  created for 9am on 8 September comes back from `create_shift` as
+  `2026-09-07T23:00:00Z` — the same instant, a **different calendar date**. Compare that to
+  what you sent as text and you will conclude you booked the wrong day and "fix" a correct
+  shift. Convert before comparing, or re-read with `list_shifts`, which returns
+  `2026-09-08T09:00:00+10:00`.
+
+  **The create response does not confirm the staff assignment.** It comes back with
+  `staff: []` and `include_staff: false` even when a carer was assigned successfully. That is
+  "not included", not "not assigned" — confirm with `list_shift_staffs` for the new shift ID
+  before telling anyone the shift is vacant or re-assigning it.
 - **Recurring:** the response carries a `program_id`. The first 20 shifts are created
   synchronously and any remainder follows asynchronously, so call `list_shifts` across the
   series range, filter by that `program_id`, and report the count. If it is short of expected,
@@ -337,9 +349,15 @@ user to the ShiftCare web app:
 - Per-shift travel billing. It follows each client's own Invoice Travel setting.
 - Additional charges such as transport or equipment billed to the client on the shift.
 
-One consequence worth surfacing: **pricing uses each client's default service area, and a
-client with no configured area produces an unpriced ($0) shift with no error.** If a shift
-matters financially, tell the user to check its pricing in the app.
+Two consequences worth surfacing, and the create response gives you both:
+
+- **A client with no configured service area produces an unpriced ($0) shift with no error.**
+- **The price book is chosen for you, and it may not be a cheap one.** The response's
+  `clients[].price_book` and `line_items` carry the name and the hourly rates, so read the
+  cost back rather than leaving it invisible: an ordinary 8-hour shift landed on a price book
+  at $207.89 per hour including tax — about $1,663 — with nothing in the request naming it.
+  Report the price book and the approximate total whenever the shift is billable, and say the
+  selection cannot be changed over MCP.
 
 Out of scope for this skill entirely — say so and stop rather than improvising:
 

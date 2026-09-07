@@ -124,13 +124,22 @@ and staff and ask which. Cancelling the wrong shift is not recoverable from here
 A shift can only be cancelled while it has **not** been timesheet-approved and **not** been
 invoiced. Check the row you just read:
 
-- `cancelled_at` is not `null` → **already cancelled.** Report the existing
-  `cancelled_reason` and stop. Do not cancel twice, and do not switch it from one
-  cancellation type to the other — MCP cannot.
+**The two cancellation types leave their marks in different places, and only one of them
+touches the shift row.** Check both, in this order:
+
+- **Per-client `absent_reason` set on any client** → this shift has already been cancelled
+  **by client**, wholly or partly. Verified in practice: a with-charge cancellation leaves
+  `cancelled_at` and `cancelled_reason` **`null` on the shift for ever** and records itself
+  only on the client, as `absent_reason` plus `last_absent_at`, with the client's
+  `price_book.claim_type` becoming `CANC`. So the shift row alone will tell you a
+  client-cancelled shift is live. This is the check that catches it — do not skip it and rely
+  on `cancelled_at`.
+- **`cancelled_at` is not `null`** → already cancelled **without charge**. Report the existing
+  `cancelled_reason` and stop.
+- Either way, do not cancel twice, and do not try to switch one cancellation type to the
+  other — MCP cannot.
 - `is_approved` is `true`, or `approved_at` is set → **stop.** The timesheet has been
   approved. Say so; unapproving is not something MCP can do.
-- Per-client `absent_reason` is already set on some clients → part of this shift has already
-  been treated as a client cancellation. Surface it before doing anything else.
 - Already invoiced shifts also cannot be cancelled, and that is not visible on the shift row.
   If the cancel call is rejected and nothing above explains it, this is the likely reason —
   tell the user to check the invoice in the app.
@@ -243,11 +252,23 @@ Call the chosen tool exactly once with `id` plus its own reason field.
 `include_clients: true` before deciding anything. A second cancel on an already-cancelled
 shift is not a safe no-op to assume.
 
-Verify against the re-read row:
+Verify against the re-read row — **and read the right field, because the two paths confirm
+themselves in different places:**
 
-- `cancelled_at` is now set, and `cancelled_reason` holds what you sent.
-- For a client cancellation, each client's `absent_reason` shows the code and `last_absent_at`
-  is set.
+- **Cancelled by client:** each client's `absent_reason` holds the code you sent,
+  `last_absent_at` is stamped, and their `price_book.claim_type` becomes `CANC`.
+  **`cancelled_at` and `cancelled_reason` stay `null`.** They are not set on this path at all,
+  so treating `cancelled_at` as the success signal makes a successful cancellation look like a
+  failure — and a retry of a billing-affecting write is exactly what must not happen here.
+- **Cancelled by us, without charge:** `cancelled_at` is set and `cancelled_reason` holds
+  what you sent.
+
+**Check `published` after cancelling, and tell the user if it changed.** Observed in practice:
+a with-charge cancellation flipped `published` from `false` to `true`, re-publishing a shift
+that had deliberately been created unpublished. So a shift you promised was invisible to the
+carer can become visible as a side effect of cancelling it. Neither cancel tool documents
+this. Re-read the field rather than assuming it survived, and if it flipped, say so — the
+carer may now see the shift on their roster.
 
 Report in plain language: which shift, for whom, cancelled which way, who is billed, who is
 paid, and that the carer still needs telling. Include the shift's `url` if one came back.
