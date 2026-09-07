@@ -1,6 +1,6 @@
 ---
 name: shiftcare-create-shift
-description: Create a shift in ShiftCare from a plain-language request — one-off or recurring, staffed or vacant. Resolves client and staff names to IDs, discovers the account's own shift types and locations, pins the time to an explicit UTC offset, reads the whole booking back for explicit confirmation, then writes once and verifies. Use for "book a shift for Mary tomorrow 9 to 5 with Sarah", "create a recurring Monday morning shift", "schedule a sleepover this Friday", "add a shift, I'll pick the carer later". Not for cancelling a shift, changing the time of an existing shift, or swapping the carer on one — those are separate workflows this skill will not attempt. Writes data; never without confirmation.
+description: Create a shift in ShiftCare from a plain-language request — one-off or recurring, staffed or vacant. Asks for whatever the request leaves out (client, carer, date and times, whether to publish, whether to notify the carer, and any tasks for the shift). Resolves client and staff names to IDs, discovers the account's own shift types and locations, pins the time to an explicit UTC offset, reads the whole booking back for explicit confirmation, then writes once and verifies. Use for "book a shift for Mary tomorrow 9 to 5 with Sarah", "create a recurring Monday morning shift", "schedule a sleepover this Friday", "add a shift, I'll pick the carer later". Not for cancelling a shift, changing the time of an existing shift, or swapping the carer on one — those are separate workflows this skill will not attempt. Writes data; never without confirmation.
 license: Apache-2.0
 metadata:
   author: shiftcare
@@ -73,7 +73,44 @@ they have chosen a carer and a time wastes their effort.
 Connection problems are not this skill's job. If ShiftCare tools are missing entirely, use
 the `shiftcare-mcp` skill.
 
-## Step 1 — Resolve every name to an ID
+## Step 1 — Ask for what the request does not say
+
+"Book a shift for Mary tomorrow" is missing most of what a shift needs. Collect the gaps in
+**one** message rather than a question at a time, and invent an answer to none of them.
+
+Ask about exactly these six:
+
+1. **Client** — who the shift is for. There is no sensible default.
+2. **Carer** — who works it, *or* that it is deliberately unstaffed. "I'll pick someone later"
+   is a real answer: it means a vacant shift, not a guess (see Step 5 and Step 6).
+3. **When** — the date, the start time and the end time. A date with no times, or a start with
+   no end, is not enough; `end_at` is required.
+4. **Published** — whether the shift goes onto the carer's roster.
+5. **Notify** — whether the carer is told about it.
+6. **Tasks** — anything the carer has to do on the shift.
+
+**Ask about `published` and `notify` even though both have server-side defaults.** That is the
+point: the defaults are computed from account settings, so leaving them unasked still decides
+whether a real person's phone buzzes. Offer them plainly — "should this go on their roster, and
+should they be notified?" — and pass whatever the user says explicitly rather than relying on
+the default.
+
+**On tasks, ask but promise nothing.** `create_shift` has no `tasks` parameter: shift checklist
+tasks cannot be attached over MCP. What it does have is `description`, free text that the carer
+reads on the shift. So put what the user tells you there, and say plainly that these are
+instructions on the shift rather than tickable checklist items, which have to be added in the
+app if they want them tracked.
+
+**Do not ask about care plans.** Care plan goals and tasks attach to a shift automatically from
+the client's own plan — nobody chooses them per shift, and no MCP tool can set them. Asking
+implies a control that does not exist. Report what the shift inherited afterwards instead, in
+Step 9.
+
+Do not ask about anything else unless the user raises it. Shift type defaults to `standard`,
+and location, facility, allowances, break time and travel are all optional and rarely
+intended — a wall of questions about them makes a two-line request feel like a form.
+
+## Step 2 — Resolve every name to an ID
 
 Use `list_clients` and `list_staff` with `filter_by_name`. Both are **partial** matches, so
 "Sam" matches Samantha and Sammy.
@@ -102,9 +139,9 @@ not the same as "does not exist" — say it that way.
 
 A shift may legitimately have no staff. If the user has not named a carer ("add a shift next
 week, I'll pick the carer"), create it **vacant** by omitting `staff_ids`. Do not choose
-someone. Note that recurring series cannot be vacant — see Step 4.
+someone. Note that recurring series cannot be vacant — see Step 5.
 
-## Step 2 — Get the account's UTC offset
+## Step 3 — Get the account's UTC offset
 
 No MCP tool reports the account's time zone directly. `list_account_locations` returns names
 and addresses but no zone, and on some accounts it is not enabled at all. Read the offset off
@@ -130,7 +167,7 @@ Then build the datetimes from the user's wall-clock time plus that offset:
 either an overnight shift, in which case `end_at` belongs on the next day, or a typo. Never
 decide which on the user's behalf.
 
-## Step 3 — Learn the account's vocabulary
+## Step 4 — Learn the account's vocabulary
 
 Call `list_shift_types`. Each row has a `name` (what the user says) and a `type_string` (what
 the tool wants). Match the user's words against `name`, send `type_string`.
@@ -156,7 +193,7 @@ Only if the user asked for them:
 `address` and `suburb_address` are free text stored on the shift. They do **not** look up or
 override `account_location_id` or `facility_id`, and those three IDs are not interchangeable.
 
-## Step 4 — Route one-off vs recurring
+## Step 5 — Route one-off vs recurring
 
 | Request | Tool |
 | --- | --- |
@@ -178,7 +215,7 @@ Recurring needs more from the user, and it will not proceed without it:
 
 `start_at` / `end_at` describe the **first** occurrence and still need an explicit offset.
 
-## Step 5 — Check for clashes, and hand the decision back
+## Step 6 — Check for clashes, and hand the decision back
 
 For each staff member you are about to assign, call `list_shifts` with `from_date` and
 `to_date` covering the shift's date **and the day before**. `list_shifts` filters on
@@ -209,7 +246,7 @@ an accepted one — do not silently drop it once they have said yes.
 Leave and availability are not checked by this skill. If the user asks, read them with
 `list_leaves` and `list_availability_schedules` before confirming.
 
-## Step 6 — Confirm, in full, every time
+## Step 7 — Confirm, in full, every time
 
 Read back every resolved value. Not "shall I create the shift?" — the whole booking, so the
 user can catch the resolution that went wrong. Nothing above this line has changed any data;
@@ -247,9 +284,9 @@ Rules for this step:
   "every Monday from 7 Sep to 21 Dec — about 16 shifts".
 - **If anything is still unresolved, this message is not confirmation-ready.** Ask the
   question instead. An unaddressed clash counts as unresolved — that question belongs in
-  Step 5, not buried in this read-back.
+  Step 6, not buried in this read-back.
 
-## Step 7 — Write once, then verify
+## Step 8 — Write once, then verify
 
 **First, re-assert the account.** Call `whoami` again and check the `account_id` still matches
 the one you resolved every ID against. This is not paranoia about a stale cache: the
@@ -263,7 +300,7 @@ Every ID you hold belongs to the account you read it from. Sent to a different a
 are foreign keys: rejected if you are lucky, silently attached to an unrelated record with a
 colliding ID if you are not. If the `account_id` has changed, **stop**. Do not translate the
 IDs, do not re-resolve the names and carry on — tell the user the account changed, and start
-again from Step 1 so they can re-confirm against the account they are actually in.
+again from Step 2 so they can re-confirm against the account they are actually in.
 
 Call the write tool exactly once.
 
@@ -302,7 +339,7 @@ account's settings, so the read-back is the only place the real answer exists. "
 true — this is on their roster now" is the fact the user needs; "I left it to the default" is
 not.
 
-## Step 8 — Tell them what is left to do
+## Step 9 — Tell them what is left to do
 
 A created shift is rarely the finished job, and the next steps are not obvious from the
 booking. Offer them, shortest first, and be exact about which you can do and which you
@@ -368,7 +405,7 @@ Out of scope for this skill entirely — say so and stop rather than improvising
   staff arrays **replace the assignment list wholesale** — sending one staff ID removes
   everyone else on the shift. Do not reach for it to "fix" a shift you just created.
 - **Editing or deleting a recurring series.** MCP cannot. A wrong series has to be corrected
-  in the app, which is the other reason Step 6 is not optional.
+  in the app, which is the other reason Step 7 is not optional.
 
 "Sarah called in sick tomorrow" is not this skill. It could mean cancel (the
 `shiftcare-cancel-shift` skill), reassign, or create a replacement shift. Ask which, and only
@@ -382,6 +419,6 @@ continue here if the answer is "create".
 | Write tools missing while `whoami` says writes are **on** | This connection does not expose the write tool — gated per tool, separately from Allow Write Actions | Report exactly that. Nothing in this skill can work around it, and it is not the account setting |
 | `Feature not enabled` | That endpoint is not enabled for the account | For `list_account_locations`, continue without a location. For the create tools, stop — the v3 shift create endpoint has to be enabled for the account |
 | `Missing required arguments: from_date, to_date` | `list_shifts` always needs both, as `YYYY-MM-DD` | Supply a whole-day range |
-| Shift created at the wrong hour | Offset omitted, or taken from the wrong side of a DST change | Read the offset from a shift near the target date (Step 2), and check the stored time in Step 7 |
+| Shift created at the wrong hour | Offset omitted, or taken from the wrong side of a DST change | Read the offset from a shift near the target date (Step 3), and check the stored time in Step 8 |
 | Shift type rejected | A `type_string` that is not configured on this account | Re-read `list_shift_types` and ask the user to choose a listed name |
 | Recurring create rejected | Missing `recurrence_end_date`, `client_ids`, or `staff_ids` | Ask for the missing piece; none of them have a safe default |
