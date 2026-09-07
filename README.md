@@ -39,6 +39,8 @@ in the skill frontmatter.
 | Skill | What it does |
 | --- | --- |
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
+| [`shiftcare-basics`](skills/shiftcare-basics/SKILL.md) | Understand ShiftCare concepts and pick the right MCP tools for a task. |
+| [`shiftcare-staff-compliance-check`](skills/shiftcare-staff-compliance-check/SKILL.md) | Sweep staff credentials for expired, expiring, missing and unverified records, optionally against an advisory NDIS or Australian aged-care checklist. |
 | [`shiftcare-onboarding-check`](skills/shiftcare-onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
 | [`shiftcare-daily-rundown`](skills/shiftcare-daily-rundown/SKILL.md) | Read-only daily sweep of yesterday's and today's shifts, grouped by urgency with a next step per finding. |
 | [`shiftcare-create-shift`](skills/shiftcare-create-shift/SKILL.md) | Create a one-off or recurring shift from a plain-language request, with mandatory confirmation before the write. |

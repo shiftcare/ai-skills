@@ -4,7 +4,7 @@ description: Understand ShiftCare domain concepts and select or combine ShiftCar
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.2"
+  version: "1.1.0"
 ---
 
 # Understand ShiftCare concepts and tools
@@ -182,3 +182,35 @@ Before `create_invoice_payment`:
 - Never compare a UTC timestamp and a local calendar date without conversion.
 - Keep IDs paired with their parent scope and related IDs; do not independently deduplicate parallel ID lists and try to re-pair them later.
 - Prefer returned display names and values over reconstructing them. Do not fabricate missing personal, service, or financial data.
+
+## Presenting results
+
+Every ShiftCare skill reports in the same shape, so a user who has read one report can read all of them. Tables, not paragraphs. Names, not IDs. A concrete next step for anything that needs one.
+
+**1. One heading line** — what was checked, the scope, any threshold applied, and the date. A reader who sees only this line should know what the numbers cover.
+
+**2. A summary table.** Counts first, worst category at the top. Never make the user total a list themselves.
+
+| Finding | Count |
+| --- | --- |
+| Expired | 11 |
+| Expiring within 90 days | 0 |
+| Unverified | 2 |
+
+**3. Detail tables**, one per finding that has detail, worst first. Real names, dates written the way a person writes them (`12 Aug 2026`), and the number of days for anything counting down. Show the first ten rows of a long table, say how many remain, and offer the rest rather than dumping hundreds.
+
+**4. A suggestions table.** Every report ends with this. A finding with no suggested action is an observation, not a report.
+
+| Priority | Suggested action | Why | Where |
+| --- | --- | --- | --- |
+| 1 | Renew First Aid for Freddy Mercury | Expired 21 days ago | Staff profile → Qualifications |
+| 2 | Turn on expiry tracking for Police Check | Recorded with no expiry date, so it never appears in an expiry report | Account → Qualifications |
+
+Order by consequence, not by how easy the fix is. Point at where the change is made in ShiftCare, so the user does not have to hunt for it. When the fix is not in ShiftCare, say where it actually lives.
+
+**5. A closing "Not checked" line** naming what the report does not cover — data the tools cannot reach, records skipped, staff or clients excluded and why. Silence here reads as a clean bill of health.
+
+Two rules that override the shape:
+
+- **Never issue a verdict or a score.** Report what the records show. "Compliant", "healthy", "audit-ready", and a percentage presented as a grade are all determinations the user makes, not the agent.
+- **Name every gap in the data.** A call that failed, a page you did not read, a record you could not resolve — say so in the report body, not only when asked. A partial result presented as a complete one is the worst output this system can produce.
