@@ -1,6 +1,9 @@
 import json
 import os
 import stat
+from pathlib import Path
+
+import pytest
 
 from report import main
 
@@ -214,3 +217,86 @@ def test_report_uses_legacy_names_and_writes_private_file(tmp_path):
     assert "connect and verify" in visible
     assert "client lookup picks list_clients" in visible
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("complete_pair", [False, True])
+def test_report_aggregates_only_pairs_with_both_measure_values(tmp_path, complete_pair):
+    run = invented_run()
+    first_pair = run["testCases"][:2]
+    second_pair = json.loads(json.dumps(first_pair))
+    for result in second_pair:
+        result["metadata"]["model"] = "invented-second-model"
+    run["testCases"] = first_pair + second_pair
+    for result, value in zip(run["testCases"], [None, 0.2, 0.8, None]):
+        result["metricsData"][0]["score"] = value
+        result["tokenCost"] = value
+        result["metadata"]["usage"]["costUsd"] = value
+    if complete_pair:
+        third_pair = json.loads(json.dumps(first_pair))
+        for result, value in zip(third_pair, [0.6, 0.3]):
+            result["metadata"]["model"] = "invented-third-model"
+            result["metricsData"][0]["score"] = value
+            result["tokenCost"] = value
+            result["metadata"]["usage"]["costUsd"] = value
+        run["testCases"].extend(third_pair)
+
+    _, _, page = write_report(tmp_path, run)
+    aggregate = visible_html(page).split("<h2>Aggregate impact</h2>", 1)[1].split(
+        "<h2>Per-model comparisons</h2>", 1
+    )[0]
+
+    if complete_pair:
+        assert '<strong>2.0× better</strong><small>0.60 / 0.30</small>' in aggregate
+        assert '<td>Response quality</td><td>0.60</td><td>0.30</td><td>2.0× better</td>' in aggregate
+        assert '<strong>2.0× higher</strong><small>$0.6 / $0.3</small>' in aggregate
+        assert '<td>Estimated cost</td><td>$0.6</td><td>$0.3</td><td>2.0× higher</td>' in aggregate
+    else:
+        assert '<span>Response quality</span><strong>comparison unavailable</strong><small>— / —</small>' in aggregate
+        assert '<td>Response quality</td><td>—</td><td>—</td><td>comparison unavailable</td>' in aggregate
+        assert '<span>Estimated cost</span><strong>comparison unavailable</strong><small>— / —</small>' in aggregate
+        assert '<td>Estimated cost</td><td>—</td><td>—</td><td>comparison unavailable</td>' in aggregate
+    assert '<strong>2.0× fewer</strong><small>100 / 200</small>' in aggregate
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_report_is_private_before_any_content_is_written(tmp_path, monkeypatch, existing):
+    output = tmp_path / "report.html"
+    if existing:
+        output.write_text("Previous invented report")
+        output.chmod(0o644)
+    writes = []
+
+    class ObservedOutput:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def fileno(self):
+            return self.stream.fileno()
+
+        def write(self, content):
+            mode = stat.S_IMODE(os.fstat(self.fileno()).st_mode)
+            assert mode == 0o600, f"report content was written with mode {mode:04o}"
+            writes.append(content)
+            return self.stream.write(content)
+
+    original_path_open = Path.open
+    original_fdopen = os.fdopen
+
+    def observe_path_open(path, mode="r", *args, **kwargs):
+        stream = original_path_open(path, mode, *args, **kwargs)
+        return ObservedOutput(stream) if path == output and "w" in mode else stream
+
+    monkeypatch.setattr(Path, "open", observe_path_open)
+    monkeypatch.setattr(os, "fdopen", lambda *args, **kwargs: ObservedOutput(original_fdopen(*args, **kwargs)))
+    old_umask = os.umask(0o022)
+    try:
+        write_report(tmp_path, invented_run())
+    finally:
+        os.umask(old_umask)
+    assert len(writes) == 1

@@ -189,9 +189,12 @@ def metric_names(results):
     return names
 
 
-def median(values):
-    available = [value for value in values if value is not None]
-    return statistics.median(available) if available else None
+def paired_medians(pairs, key):
+    values = [(result_value(left, key), result_value(right, key)) for left, right in pairs]
+    available = [(left, right) for left, right in values if left is not None and right is not None]
+    if not available:
+        return None, None
+    return tuple(statistics.median(side) for side in zip(*available))
 
 
 def result_value(result, key):
@@ -312,8 +315,7 @@ def aggregate_rows(case_results):
     pairs = pairs_for(case_results)
     rows = []
     for key, label, kind, higher, positive, negative in measure_specs(case_results):
-        with_value = median([result_value(pair[0], key) for pair in pairs])
-        without_value = median([result_value(pair[1], key) for pair in pairs])
+        with_value, without_value = paired_medians(pairs, key)
         rows.append(
             f"<tr><td>{escape(label)}</td><td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td><td>{escape(comparison(with_value, without_value, higher, positive, negative))}</td></tr>"
         )
@@ -332,8 +334,7 @@ def aggregate_impact(case_results):
     ]
     cards = []
     for key, label, kind, higher, positive, negative in wanted:
-        with_value = median([result_value(pair[0], key) for pair in pairs])
-        without_value = median([result_value(pair[1], key) for pair in pairs])
+        with_value, without_value = paired_medians(pairs, key)
         cards.append(
             f'<div class="impact"><span>{escape(label)}</span><strong>{escape(comparison(with_value, without_value, higher, positive, negative))}</strong><small>{number(with_value, kind)} / {number(without_value, kind)}</small></div>'
         )
@@ -452,6 +453,16 @@ function showCase(id) {
   setView('case');
   for (const panel of document.querySelectorAll('[data-case-panel]')) panel.hidden = panel.dataset.casePanel !== id;
 }
+function followFragment() {
+  const target = document.getElementById(location.hash.slice(1));
+  if (!target) return;
+  const panel = target.closest('[data-case-panel]');
+  const caseId = panel?.dataset.casePanel || target.querySelector('[data-case]')?.dataset.case;
+  if (!caseId) return;
+  showCase(caseId);
+  if (target.tagName === 'DETAILS') target.open = true;
+  target.scrollIntoView();
+}
 for (const name of views) document.getElementById(name + '-tab').addEventListener('click', () => setView(name));
 for (const link of document.querySelectorAll('[data-case]')) link.addEventListener('click', () => showCase(link.dataset.case));
 for (const link of document.querySelectorAll('[data-view="case"]')) link.addEventListener('click', () => setView('case'));
@@ -464,6 +475,8 @@ for (const button of document.querySelectorAll('.download-button')) button.addEv
 });
 const firstPanel = document.querySelector('[data-case-panel]');
 if (firstPanel) firstPanel.hidden = false;
+window.addEventListener('hashchange', followFragment);
+followFragment();
 """
 
 
@@ -492,8 +505,10 @@ def main(argv=None):
     source = json.loads(source_path.read_text())
     page = render(source, source_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(page)
-    os.chmod(output_path, 0o600)
+    descriptor = os.open(output_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        os.fchmod(output.fileno(), 0o600)
+        output.write(page)
     print(output_path)
 
 

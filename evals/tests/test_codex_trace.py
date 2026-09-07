@@ -40,4 +40,9 @@ def test_parse_codex_events():
         },
     ]
     assert result["usage"]["inputTokens"] == 1000
+    assert result["usage"]["costUsd"] is None
     assert result["answer"] == "Connected and verified."
+
+
+def test_codex_cost_is_unavailable_without_a_completed_turn():
+    assert parse_events([])["usage"]["costUsd"] is None

@@ -8,7 +8,7 @@ import time
 def parse_events(lines):
     answer = ""
     tool_calls = []
-    usage = {"inputTokens": 0, "outputTokens": 0, "costUsd": 0}
+    usage = {"inputTokens": 0, "outputTokens": 0, "costUsd": None}
     turns = 0
 
     for line in lines:
@@ -44,7 +44,7 @@ def parse_events(lines):
             usage = {
                 "inputTokens": raw_usage.get("input_tokens", 0),
                 "outputTokens": raw_usage.get("output_tokens", 0),
-                "costUsd": 0,
+                "costUsd": None,
             }
             turns += 1
 

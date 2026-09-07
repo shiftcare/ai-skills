@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from deepeval.metrics import (
     ArgumentCorrectnessMetric as DeepEvalArgumentCorrectnessMetric,
@@ -10,6 +11,7 @@ from deepeval.test_case import ToolCall
 
 
 SKILL_LOADING_TOOLS = {"Skill", "command_execution"}
+READ_TOOLS = set(json.loads(Path(__file__).with_name("read_tools.json").read_text())) - {"whoami"}
 TRUNCATION_MARKERS = (
     "exceeds maximum allowed tokens",
     "Output has been saved to",
@@ -137,7 +139,7 @@ class ConnectionProtocol(BaseMetric):
         problems = []
         if not calls or calls[0] != "whoami":
             problems.append(f"first MCP call was {calls[0] if calls else 'nothing'}, expected whoami")
-        if len(calls) < 2:
+        if not any(name in READ_TOOLS for name in calls[1:]):
             problems.append("no read-only call after whoami")
         self.score = 0 if problems else 1
         self.reason = "; ".join(problems) if problems else f"whoami first, then {', '.join(calls[1:])}"
@@ -154,3 +156,35 @@ class ConnectionProtocol(BaseMetric):
     @property
     def __name__(self):
         return "Connection Protocol"
+
+
+class ShiftDate(BaseMetric):
+    def __init__(self, tool_calls, expected_date):
+        self.tool_calls = tool_calls
+        self.expected_date = expected_date
+        self.threshold = 1
+        self.async_mode = False
+        self.include_reason = True
+        self.evaluation_model = "deterministic"
+
+    def measure(self, test_case, *args, **kwargs):
+        call = next((call for call in self.tool_calls if call["name"] == "list_shifts"), None)
+        self.score = int(call is not None and self.expected_date in json.dumps(call.get("input") or {}))
+        self.reason = (
+            f"list_shifts used the expected date {self.expected_date}."
+            if self.score else f"Expected list_shifts with date {self.expected_date}; "
+            + ("tool was not called." if call is None else "arguments did not include that date.")
+        )
+        self.success = self.is_successful()
+        return self.score
+
+    async def a_measure(self, test_case, *args, **kwargs):
+        return self.measure(test_case, *args, **kwargs)
+
+    def is_successful(self):
+        self.success = self.error is None and self.score is not None and self.score >= self.threshold
+        return self.success
+
+    @property
+    def __name__(self):
+        return "Shift Date"

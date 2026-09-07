@@ -1,0 +1,7 @@
+[
+  "whoami",
+  "list_teams",
+  "list_clients",
+  "list_shifts",
+  "list_invoices"
+]

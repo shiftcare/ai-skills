@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-import json
 
 from deepeval import assert_test
 from deepeval.metrics import GEval, ToolCorrectnessMetric
@@ -7,7 +6,7 @@ from deepeval.test_case import LLMTestCase, SingleTurnParams, ToolCall
 import pytest
 
 from judge import ClaudeJudge
-from metrics import ToolResultIntegrity, agent_trace, agentic_metrics, to_deepeval_tool_calls
+from metrics import ShiftDate, ToolResultIntegrity, agent_trace, agentic_metrics, to_deepeval_tool_calls
 from runners import run_agent
 
 
@@ -52,15 +51,6 @@ def test_task(case, model, mcp, workspaces):
         mcp=mcp,
     )
     tool_calls = result["toolCalls"]
-
-    if case["expected_tool"] == "list_shifts":
-        shift_call = next(
-            (call for call in tool_calls if call["name"] == "list_shifts"),
-            None,
-        )
-        assert shift_call is not None
-        tomorrow = (date.today() + timedelta(days=1)).isoformat()
-        assert tomorrow in json.dumps(shift_call["input"])
 
     test_case = LLMTestCase(
         name=f"{model}: {case['name']}",
@@ -109,4 +99,6 @@ def test_task(case, model, mcp, workspaces):
         ToolResultIntegrity(tool_calls),
         *agentic_metrics(judge, case["ask"]),
     ]
+    if case["expected_tool"] == "list_shifts":
+        metrics.append(ShiftDate(tool_calls, (date.today() + timedelta(days=1)).isoformat()))
     assert_test(test_case, metrics, run_async=False)
