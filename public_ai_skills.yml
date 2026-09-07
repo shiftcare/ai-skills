@@ -1,0 +1,17 @@
+shared:
+  skills:
+    shiftcare-onboarding-check:
+      minimum_skill_version: "2.5.3"
+      latest_skill_version: "2.5.3"
+    shiftcare-daily-rundown:
+      minimum_skill_version: "1.0.0"
+      latest_skill_version: "1.0.0"
+    shiftcare-basics:
+      minimum_skill_version: "1.0.0"
+      latest_skill_version: "1.0.2"
+    shiftcare-mcp:
+      minimum_skill_version: "1.0.0"
+      latest_skill_version: "1.0.2"
+    # A withdrawn skill keeps only its retirement date (quoted, YYYY-MM-DD):
+    # shiftcare-old:
+    #   retired_on: "2026-01-03"
