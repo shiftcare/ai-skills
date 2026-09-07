@@ -13,21 +13,9 @@
 Quote that caveat, do not paraphrase it. Report against this list only when the user
 has explicitly chosen the NDIS check.
 
-## How to use the columns
-
-- **Match terms** — search the account's qualification names and category names for
-  these, case-insensitively. One hit is a match. Show every match to the user for
-  correction before reporting.
-- **Applies to** — `Everyone` means every worker including office and admin staff.
-  `Frontline` means staff delivering direct, face-to-face client support; do not
-  report office-only staff against these.
-- **Conditional** — the requirement applies only when the trigger is true. ShiftCare
-  does not track these triggers. Report it as a check the user makes, never as an
-  unmet obligation.
-
 ## Every worker
 
-| Requirement | Match terms | Conditional |
+| Requirement | Match terms | Notes |
 | --- | --- | --- |
 | Proof of identity / 100-point ID | identity, 100 point, 100-point, proof of identity, id check | — |
 | Right to Work | right to work, working rights, work entitlement, visa, citizenship | — |
@@ -38,7 +26,7 @@ has explicitly chosen the NDIS check.
 
 ## Frontline care only
 
-| Requirement | Match terms | Conditional |
+| Requirement | Match terms | Notes |
 | --- | --- | --- |
 | First Aid and CPR (HLTAID011 / HLTAID009) | first aid, hltaid, cpr, resuscitation | Only for workers delivering direct, face-to-face support. |
 | Infection control / hand hygiene | infection control, infection prevention, ipc, hand hygiene | Only for workers delivering direct, face-to-face support. |
@@ -63,21 +51,3 @@ expectation for disability support work, not a legislated requirement — say so
 | Relevant tertiary qualification | tertiary qualification, relevant tertiary, bachelor, degree, diploma | Allied health, nurses, behaviour support practitioners, support coordinators |
 | AHPRA registration | ahpra, registration board, registered practitioner | Registered health practitioners |
 | Behaviour Support Practitioner suitability (PBS Capability Framework) | positive behaviour support, behaviour support practitioner, bsp suitability, pbs capability | Behaviour support practitioners |
-
-## Requirements with nothing to check against
-
-Report these as "manual review", never as missing. There is no structured record in
-ShiftCare to verify them against, so an absence proves nothing.
-
-| Requirement | Match terms |
-| --- | --- |
-| Relevant experience | experience, years of experience, tenure, prior experience |
-| Continuing professional development | cpd, continuing professional development, professional development, ongoing training |
-
-## Exclusions
-
-Purely office or administrative roles — administrator, office coordinator, scheduler,
-accounts, director — hold the "every worker" requirements but not the frontline-care
-ones, unless the job title itself indicates direct client support. Key personnel are
-subject to separate suitability and governance obligations that this checklist does
-not cover.

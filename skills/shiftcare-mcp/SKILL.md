@@ -68,8 +68,8 @@ ShiftCare connection — Australia · 4 September 2026
 
 | Check | Result |
 | --- | --- |
-| Account | Northside Community Care |
-| Signed in as | Alex Mercer (Admin) |
+| Account | Example Care Co |
+| Signed in as | Freddy Mercury (Admin) |
 | MCP available | Yes |
 | Write actions | Off — read-only |
 | Test call | `list_teams` returned 4 teams |

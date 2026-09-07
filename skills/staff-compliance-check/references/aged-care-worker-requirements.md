@@ -22,30 +22,17 @@ screening records.
 ## Read this caveat out to the user before reporting against this list
 
 > This is a general checklist of worker requirements commonly expected of Australian
-> home care and community aged care providers. Aged-care worker screening is changing —
-> a new process aligned to the NDIS worker check is being introduced, and existing
-> police certificates remain usable until they expire. Vaccination requirements are now
-> set by provider policy and by state and territory health departments rather than
-> federally mandated. Several items below are sector norms rather than law. Confirm
-> current requirements against the [Aged Care Quality and Safety
-> Commission](https://www.agedcarequality.gov.au) and the [Department of Health,
-> Disability and Ageing](https://www.health.gov.au) before relying on this. It is not
-> legal advice and it is not an audit outcome.
+> home care and community aged care providers. Aged-care worker screening aligned to the
+> NDIS worker check applies, and existing police certificates remain usable until they
+> expire. Vaccination requirements for home care sit with provider policy and with state
+> and territory health departments rather than a federal mandate. Several items below are
+> sector norms rather than law. Confirm current requirements against the [Aged Care
+> Quality and Safety Commission](https://www.agedcarequality.gov.au) and the [Department
+> of Health, Disability and Ageing](https://www.health.gov.au) before relying on this. It
+> is not legal advice and it is not an audit outcome.
 
 Quote that caveat, do not paraphrase it. Report against this list only when the user
 has explicitly chosen the aged-care check.
-
-## How to use the columns
-
-- **Match terms** — search the account's qualification names and category names for
-  these, case-insensitively. One hit is a match. Show every match to the user for
-  correction before reporting.
-- **Applies to** — `Everyone` means every worker including office and admin staff.
-  `Frontline` means staff delivering direct, face-to-face care in a client's home or
-  in the community.
-- **Conditional** — the requirement applies only when the trigger is true. ShiftCare
-  does not track these triggers. Report it as a check the user makes, never as an
-  unmet obligation.
 
 ## Every worker
 
@@ -83,21 +70,3 @@ legislated minimum for home care. Say so rather than reporting it as a breach.
 | Certificate III Individual Support (Ageing), or equivalent | cert iii, certificate iii, cert 3, certificate 3, individual support, ageing support, aged care | Personal care and support workers |
 | Relevant tertiary qualification | tertiary qualification, relevant tertiary, bachelor, degree, diploma | Allied health, nurses, care managers |
 | AHPRA registration | ahpra, registration board, registered practitioner, registered nurse, enrolled nurse | Registered health practitioners |
-
-## Requirements with nothing to check against
-
-Report these as "manual review", never as missing. There is no structured record in
-ShiftCare to verify them against, so an absence proves nothing.
-
-| Requirement | Match terms |
-| --- | --- |
-| Relevant experience | experience, years of experience, tenure, prior experience |
-| Continuing professional development | cpd, continuing professional development, professional development, ongoing training |
-
-## Exclusions
-
-Purely office or administrative roles hold the "every worker" requirements but not the
-frontline-care ones, unless the job title itself indicates direct client care.
-Responsible-person and key-personnel suitability, provider registration, and clinical
-governance obligations sit at the organisation rather than the worker, and this
-checklist does not cover them.

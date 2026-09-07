@@ -189,7 +189,7 @@ Every ShiftCare skill reports in the same shape, so a user who has read one repo
 
 | Priority | Suggested action | Why | Where |
 | --- | --- | --- | --- |
-| 1 | Renew First Aid for Jordan Ellis | Expired 21 days ago | Staff profile → Qualifications |
+| 1 | Renew First Aid for Freddy Mercury | Expired 21 days ago | Staff profile → Qualifications |
 | 2 | Turn on expiry tracking for Police Check | Recorded with no expiry date, so it never appears in an expiry report | Account → Qualifications |
 
 Order by consequence, not by how easy the fix is. Point at where the change is made in ShiftCare, so the user does not have to hunt for it. When the fix is not in ShiftCare, say where it actually lives.

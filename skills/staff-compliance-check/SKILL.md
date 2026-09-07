@@ -46,7 +46,7 @@ An account running both SIL and home care needs both checks, and each staff memb
 
 If the user asks "are we NDIS compliant?", still confirm the NDIS check is what they want, then answer with the caveats in the reference file rather than a verdict.
 
-**Scope.** One staff member, or the whole account? Ask alongside the industry, but note that Step 3 below answers a useful question for the whole account on two calls, whatever scope they pick.
+**Scope.** One staff member, or the whole account? Ask alongside the industry, but note that Step 4 below answers a useful question for the whole account on two calls, whatever scope they pick.
 
 **Expiry window.** Default 90 days. State the number in the output every time. Accept an override between 7 and 365 days ("check with a 30-day window"). The account's own configured window may differ from 90 days and is not readable through the MCP server, so never claim the number you used is the account's setting.
 
@@ -70,6 +70,21 @@ The product has no built-in industry checklists — qualification categories and
 2. For each requirement, find the account qualifications whose name or category contains one of those terms, case-insensitively.
 3. **Show the user the mapping once, before reporting.** List each requirement with the account qualification you matched it to, and every requirement you could not match. Ask them to correct it. Reuse the corrected mapping for the rest of the conversation, and do not re-ask.
 4. An unmatched requirement is not automatically a gap. It may be tracked outside ShiftCare. Report it as "not tracked in this account" and let the user decide, rather than as a failure.
+
+**Reading a reference file.** Both framework references have the same shape, so these rules cover either one:
+
+- **Match terms** — search the account's qualification names and category names for these, case-insensitively. One hit is a match. Show every match to the user for correction before reporting.
+- **Notes** — caveats and conditional triggers for that requirement. ShiftCare does not track the triggers.
+- **Applies to** — only the role-specific tables carry this column. Everywhere else the section heading says who the table covers: "Every worker" includes office and admin staff, "Frontline care only" covers staff delivering direct, face-to-face client support and nobody else.
+
+**Requirements with nothing to check against.** These two have no structured record in ShiftCare, so an absence proves nothing. Report them as "manual review", never as missing, under either framework:
+
+| Requirement | Match terms |
+| --- | --- |
+| Relevant experience | experience, years of experience, tenure, prior experience |
+| Continuing professional development | cpd, continuing professional development, professional development, ongoing training |
+
+**Exclusions.** Purely office or administrative roles — administrator, office coordinator, scheduler, accounts, director — hold the "every worker" requirements but not the frontline-care ones, unless the job title itself indicates direct client support. Key-personnel and responsible-person suitability, provider registration, and clinical governance sit with the organisation rather than the worker, and neither checklist covers them.
 
 **Substring matching produces confident nonsense.** A match term that appears inside a qualification for a different clinical domain is a false positive, and presenting it as satisfied is worse than reporting nothing. Real examples: `orientation` matches "Orientation & Mobility Training", a vision-impairment mobility skill unrelated to the NDIS worker orientation module; `first aid` matches "Mental Health First Aid" and "Seizure First Aid", neither of which is a general first-aid certificate. When a matched name adds a clinical or service domain the requirement never mentioned, list it as a **likely false positive** for the user to reject, separately from the matches you are confident in. A single confident match beats four matches the user has to audit.
 
@@ -130,29 +145,32 @@ Never present "not configured" as non-compliance. The provider may track that cr
 
 1. Call `list_staff` with `per_page=20`, page 1. Read `_metadata.total_count` and `total_pages`.
 2. **Cost guard.** Each staff member costs one further call — `list_staff_qualifications` takes a single `staff_id` and has no account-wide form. Before sweeping more than about 25 staff, tell the user the number of calls it will take and offer to narrow the scope by name or role first. Wait for their answer. A 300-staff account is roughly 315 calls and a large amount of token spend.
-3. Page through every page, then filter on `onboarding_status` yourself; there is no server-side filter. Keep `active`. Exclude `invited` and `pending` — they have not started. **`onboarding_status` can also be `null`**, which is not the same as inactive: treat null as unknown, keep the staff member in the sweep, and label them so the user can correct it. Report the excluded count broken down by status, never as one lump.
+3. Page through every page, then filter on `onboarding_status` yourself; there is no server-side filter. Keep `active`. Exclude `invited`, `pending` and `no_access` — they have not started or were never given access. **`onboarding_status` can also be `null`**, which is not the same as inactive: treat null as unknown, keep the staff member in the sweep, and label them so the user can correct it. Report the excluded count broken down by status, never as one lump.
 4. Per staff member, call `list_staff_qualifications`.
 
 Do not sweep `list_staff_files` account-wide. Every document row carries a long signed file URL, so an account-wide document listing costs far more tokens than it returns in value, and rows with `user_id: null` are account-level documents that belong to no staff member. Never echo a file URL into the output; they are temporary and unreadable to the user.
 
 ## Step 6 — work out each status
 
-Per qualification record, in this order. The first match wins.
+One ladder, used both as the evaluation order and as the severity order everywhere else in the report. Per qualification record the first match wins; worst is at the top.
 
 1. **Requires attachment** — the qualification has `require_document: true` and the record has no `document_id`. An expiry date on a record with no document attached does not mean anything, so this takes precedence over the dates.
 2. **Expired** — `expires_at` date is before today.
-3. **Expiring soon** — `expires_at` is today or later and within the window.
-4. **Unverified** — `verified_at` is null.
-5. **Valid** — everything else. A record with no `expires_at` is valid but flag it separately if the qualification has `require_expiry: true`.
+3. **Unverified** — `verified_at` is null.
+4. **No expiry** — `expires_at` is blank. Call this out separately when the qualification has `require_expiry: true`.
+5. **Expiring soon** — `expires_at` is today or later and within the window.
+6. **Valid** — everything else.
 
-**One staff member can hold several records for the same qualification.** Collapse them to the best status, in this order: valid, no expiry, expiring soon, requires attachment, unverified, expired. A renewal supersedes the certificate it replaced, so one valid record makes that qualification valid even when an expired record for it still exists.
+Rungs 2 to 6 are the order the product itself evaluates a staff qualification in, so a record's status here reads the same as it does in the app. Rung 1 sits above them because the product pulls records that require a document and have none out of the status buckets entirely.
+
+**One staff member can hold several records for the same qualification.** Keep the record with the latest `expires_at`, which is the row the product's staff qualifications report keeps; a record with no `expires_at` counts only when no dated record exists. Then run the ladder on that one record. A renewal supersedes the certificate it replaced because its expiry is later — but an old open-ended record does not rescue a newer expired one, and the report will say expired.
 
 **Missing** is a separate bucket, computed against a requirement list rather than a record:
 
 - Always: every qualification with `require_for_all_carers: true` that the staff member has no record for. The flag says *carers*, so do not count these against office-only roles — an administrator with no Driver Licence record is not a gap. Report office and admin staff in a separate line ("not counted, office role") rather than in the missing bucket, and name the roles you treated as office so a wrong call is visible.
-- Framework mode: every checklist requirement with no matching qualification in the account's catalog, or with a matching qualification the staff member holds no record for.
+- Framework mode: every checklist requirement with a matching qualification in the account's catalog that the staff member holds no record for. A requirement with no matching qualification at all is "not configured" from Step 4, never missing.
 
-Compare dates as calendar dates in the account's time zone. `expires_at` and `verified_at` come back as UTC timestamps; converting a UTC timestamp against a local date without conversion moves credentials in and out of the expired bucket at the day boundary.
+Compare dates as calendar dates, not timestamps. `expires_at` and `verified_at` come back as UTC, and nothing this skill calls returns the account's time zone — `whoami`, `list_accounts` and `list_staff` all omit it. Convert using the user's own time zone, name that zone in the report's heading line so a wrong assumption is visible, and offer to re-run if it is wrong. Comparing a UTC timestamp against a local date without converting moves credentials in and out of the expired bucket at the day boundary.
 
 ## Step 7 — report
 
@@ -165,7 +183,7 @@ Each requirement gets a status derived from its own counts, and its **own denomi
 | Status | When |
 | --- | --- |
 | Clear | Every in-scope staff member holds a valid record. |
-| Needs attention | At least one in-scope staff member is expired, expiring, unverified, or missing an attachment. |
+| Needs attention | At least one in-scope staff member is expired, expiring, unverified, missing an attachment, or has no record — but not all of them. |
 | Missing | No in-scope staff member holds a record at all. |
 | Manual review | Nothing in ShiftCare to verify against — experience, professional development. Never report these as missing. |
 | Not configured | No qualification in the account matches this requirement, from Step 4. |
@@ -189,8 +207,8 @@ Manual handling                    Clear             18/18   name: Manual Handli
 ### Staff view — worst first
 
 ```text
-Staff compliance — expiry check · 28 staff · 90-day window · 4 September 2026
-3 excluded (2 invited, 1 pending) · 1 unknown status
+Staff compliance — expiry check · 28 staff · 90-day window · 4 September 2026 (Australia/Sydney)
+4 excluded (2 invited, 1 pending, 1 no access) · 1 unknown status
 ```
 
 | Finding | Count |
@@ -203,8 +221,8 @@ Staff compliance — expiry check · 28 staff · 90-day window · 4 September 20
 
 | Staff | Qualification | Status | Date |
 | --- | --- | --- | --- |
-| Jordan Ellis | First Aid Certificate | Expired | 12 Aug 2026 (23 days ago) |
-| Sam Whitfield | Police Check | Expiring | 2 Nov 2026 (59 days) |
+| Freddy Mercury | First Aid Certificate | Expired | 12 Aug 2026 (23 days ago) |
+| David Bowie | Police Check | Expiring | 2 Nov 2026 (59 days) |
 
 ### Suggestions — always end here
 
@@ -212,7 +230,7 @@ Order by consequence: expired credentials on rostered staff first, then setup ga
 
 | Priority | Suggested action | Why | Where |
 | --- | --- | --- | --- |
-| 1 | Renew First Aid for Jordan Ellis | Expired 23 days ago and rostered this week | Staff profile → Qualifications |
+| 1 | Renew First Aid for Freddy Mercury | Expired 23 days ago and rostered this week | Staff profile → Qualifications |
 | 2 | Turn on expiry tracking for Police Check | Recorded with no expiry date, so it will never appear in this report | Account → Qualifications |
 | 3 | Create a qualification for NDIS Code of Conduct | Not configured, so no staff member can be recorded against it | Account → Qualifications |
 | 4 | Merge the 3 Working With Children entries | Records split across duplicates make the same person look both covered and missing | Account → Qualifications |
@@ -223,10 +241,9 @@ Rules for the output:
 
 - Give the requirement view's denominator as `held / in scope`, never a bare percentage.
 - Say which requirements were satisfied by something other than their obvious qualification, and what counted.
-
 - Names, not IDs. Qualification names, not qualification IDs.
 - Every date as a calendar date the user recognises, plus how many days for anything expiring.
-- State the window you used, and that it may not match the account's own configured window.
+- State the window you used, and that it may not match the account's own configured window. State the time zone you compared dates in.
 - State the framework and its caveat when one was chosen, quoting the reference file's caveat rather than paraphrasing it.
 - Name every staff member you skipped, excluded, or could not read.
 - No compliance verdict. No score. No "you're audit-ready".
