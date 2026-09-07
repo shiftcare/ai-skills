@@ -1,23 +1,24 @@
 ---
-name: shiftcare-morning-rundown
-description: Sweep yesterday's and today's ShiftCare shifts and report what needs a coordinator's attention, grouped by urgency — missed clock-ins, vacant shifts, double-booked staff, short breaks, expiring staff compliance, and rate gaps that will block invoicing. Every finding names the shift, client, staff and a concrete next step. Use when the user asks "what needs my attention today", "morning rundown", "any problems with yesterday's shifts", "did anyone miss a clock-in", or "anything blocking invoicing". Read-only. Not for checking whether an account is set up correctly — that is onboarding-check.
+name: shiftcare-daily-rundown
+description: Sweep yesterday's and today's ShiftCare shifts and report what needs a coordinator's attention, grouped by urgency — missed clock-ins, vacant shifts, double-booked staff, short breaks, expiring staff compliance, and rate gaps that will block invoicing. Every finding names the shift, client, staff and a concrete next step. Use when the user asks "what needs my attention today", "daily rundown", "morning rundown", "how did today go", "any problems with yesterday's shifts", "did anyone miss a clock-in", or "anything blocking invoicing". Read-only. Not for checking whether an account is set up correctly — that is onboarding-check.
 license: Apache-2.0
 metadata:
   author: shiftcare
   version: "1.0.0"
 ---
 
-# ShiftCare morning rundown
+# ShiftCare daily rundown
 
-The daily sweep a rostering coordinator does across several screens before the day starts:
-what went wrong yesterday, what is unstaffed today, and what will block this week's invoice
-run. This skill answers it in one pass and **never calls a write tool**.
+The sweep a rostering coordinator does across several screens once a day — before the day
+starts, or when closing it out: what went wrong yesterday, what is unstaffed today, and
+what will block this week's invoice run. This skill answers it in one pass and **never
+calls a write tool**.
 
 ## Use this, or use onboarding-check
 
 | The user is asking | Skill |
 | --- | --- |
-| "What needs my attention today?" — an operating account, this morning's problems | **this one** |
+| "What needs my attention today?" — an operating account, today's problems | **this one** |
 | "Is my account set up properly?" — a new account, configuration gaps | `onboarding-check` |
 
 If the account turns out to have almost no real data — a roster of nothing but the demo
@@ -34,10 +35,10 @@ line, offer to widen the window, and stop.
 ## Before any tool call
 
 1. **Compatibility preflight.** Call `check_skill_compatibility` with skill
-   `shiftcare-morning-rundown` and skill_version `1.0.0`, before every other tool.
+   `shiftcare-daily-rundown` and skill_version `1.0.0`, before every other tool.
    - `up_to_date` — continue.
    - `update_available` — continue, and tell the user a newer version exists.
-   - `update_required` — **stop.** Tell the user to run `npx skills update shiftcare-morning-rundown`.
+   - `update_required` — **stop.** Tell the user to run `npx skills update shiftcare-daily-rundown`.
    - `retired` — **stop.** The skill has been withdrawn.
    - `unrecognized` — the server's registry has no entry for this skill yet, which is
      expected while the skill is new. Continue, and say once that the version could not be
