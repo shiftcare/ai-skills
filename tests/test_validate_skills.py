@@ -2,10 +2,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.validate_skills import validate_repository
+from scripts.validate_skills import COMPATIBILITY_TEMPLATE, validate_repository
 
 
 class ValidateSkillsTest(unittest.TestCase):
+    def test_compatibility_check_allows_servers_without_the_tool(self):
+        self.assertIn(
+            "If `check_skill_compatibility` is not available, warn the user that "
+            "compatibility could not be checked and continue.",
+            COMPATIBILITY_TEMPLATE.read_text(),
+        )
+
     def test_repository_policy_checks(self):
         with tempfile.TemporaryDirectory() as directory:
             skills = Path(directory)
@@ -28,10 +35,20 @@ metadata:
   version: "1.2.3"
 ---
 See [the guide](references/guide.md).
-Run `npx skills update valid-skill` when an update is required.
 """
+                + COMPATIBILITY_TEMPLATE.read_text().format(skill="valid-skill")
             )
             self.assertEqual(validate_repository(skills), [])
+
+            (valid / "SKILL.md").write_text(
+                (valid / "SKILL.md")
+                .read_text()
+                .replace("stop and warn", "stop and tell")
+            )
+            self.assertIn(
+                "compatibility check does not match scripts/compatibility_check.md",
+                "\n".join(validate_repository(skills)),
+            )
 
             unsafe = skills / "unsafe-skill"
             unsafe.mkdir()
@@ -78,6 +95,10 @@ description: Duplicate YAML keys are invalid.
 
             errors = "\n".join(validate_repository(skills))
             self.assertIn("metadata.version must be a valid SemVer string", errors)
+            self.assertIn(
+                "compatibility check does not match scripts/compatibility_check.md",
+                errors,
+            )
             self.assertIn("missing local reference: scripts/missing.py", errors)
             self.assertIn("missing local reference: references/also-missing.md", errors)
             self.assertIn("invalid reference: http://[", errors)

@@ -24,6 +24,7 @@ RESOURCE_PATH = re.compile(
 )
 INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 UPDATE_COMMAND = re.compile(r"\bnpx\s+skills\s+update\b")
+COMPATIBILITY_TEMPLATE = Path(__file__).with_name("compatibility_check.md")
 
 
 def referenced_paths(text: str) -> tuple[set[str], set[str]]:
@@ -122,6 +123,15 @@ def validate_update_commands(
     return errors
 
 
+def validate_compatibility_check(body: str, skill_dir: Path) -> list[str]:
+    required = COMPATIBILITY_TEMPLATE.read_text(encoding="utf-8").format(
+        skill=skill_dir.name
+    ).strip()
+    if required in body:
+        return []
+    return ["compatibility check does not match scripts/compatibility_check.md"]
+
+
 def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
     if not skills_root.is_dir():
         return [f"Missing skills directory: {skills_root}"]
@@ -145,7 +155,7 @@ def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
         if skill_md is None:
             continue
         try:
-            metadata, _ = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
+            metadata, body = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
         except (ParseError, OSError, UnicodeError):
             continue
 
@@ -164,6 +174,11 @@ def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
             errors.append(
                 f"{skill_dir.name}: metadata.version must be a valid SemVer string"
             )
+
+        errors.extend(
+            f"{skill_dir.name}: {error}"
+            for error in validate_compatibility_check(body, skill_dir)
+        )
 
         errors.extend(validate_local_references(skill_dir, skills_root))
 
