@@ -1,14 +1,17 @@
 import re
 import sys
 import unicodedata
+from datetime import date
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+import strictyaml
 from skills_ref.errors import ParseError
 from skills_ref.parser import find_skill_md, parse_frontmatter
 from skills_ref.validator import validate as validate_skill
 
 SKILLS_ROOT = Path(__file__).resolve().parents[1] / "skills"
+COMPATIBILITY_MANIFEST = SKILLS_ROOT.parent / "public_ai_skills.yml"
 SEMVER = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
@@ -25,6 +28,7 @@ RESOURCE_PATH = re.compile(
 INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 UPDATE_COMMAND = re.compile(r"\bnpx\s+skills\s+update\b")
 COMPATIBILITY_TEMPLATE = Path(__file__).with_name("compatibility_check.md")
+CORE_SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
 def referenced_paths(text: str) -> tuple[set[str], set[str]]:
@@ -132,7 +136,77 @@ def validate_compatibility_check(body: str, skill_dir: Path) -> list[str]:
     return ["compatibility check does not match scripts/compatibility_check.md"]
 
 
-def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
+def validate_compatibility_manifest(
+    manifest_path: Path, skill_versions: dict[str, str]
+) -> list[str]:
+    try:
+        manifest = strictyaml.load(manifest_path.read_text(encoding="utf-8")).data
+    except FileNotFoundError:
+        return [f"Missing compatibility manifest: {manifest_path}"]
+    except (strictyaml.YAMLError, OSError, UnicodeError) as error:
+        return [f"Cannot read compatibility manifest: {error}"]
+
+    shared = manifest.get("shared") if isinstance(manifest, dict) else None
+    if not isinstance(shared, dict) or not isinstance(shared.get("skills"), dict):
+        return ["public_ai_skills.yml: shared.skills must be a mapping"]
+
+    errors = []
+    entries = shared["skills"]
+    for name in skill_versions:
+        if name not in entries:
+            errors.append(f"{name}: missing from public_ai_skills.yml")
+
+    for name, entry in entries.items():
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            errors.append(f"public_ai_skills.yml: each skill must map to a mapping")
+            continue
+
+        retired_on = entry.get("retired_on")
+        if retired_on is not None:
+            try:
+                if not isinstance(retired_on, str) or not re.fullmatch(
+                    r"\d{4}-\d{2}-\d{2}", retired_on
+                ):
+                    raise ValueError
+                date.fromisoformat(retired_on)
+            except ValueError:
+                errors.append(f"{name}: retired_on must be a valid YYYY-MM-DD date")
+            continue
+
+        if name not in skill_versions:
+            errors.append(f"{name}: active manifest entry has no skill directory")
+
+        minimum = entry.get("minimum_skill_version")
+        latest = entry.get("latest_skill_version")
+        for field, value in (
+            ("minimum_skill_version", minimum),
+            ("latest_skill_version", latest),
+        ):
+            if not isinstance(value, str) or not CORE_SEMVER.fullmatch(value):
+                errors.append(f"{name}: {field} must be a MAJOR.MINOR.PATCH version")
+
+        if not all(
+            isinstance(value, str) and CORE_SEMVER.fullmatch(value)
+            for value in (minimum, latest)
+        ):
+            continue
+        if tuple(map(int, minimum.split("."))) > tuple(map(int, latest.split("."))):
+            errors.append(
+                f"{name}: minimum_skill_version {minimum} is above "
+                f"latest_skill_version {latest}"
+            )
+        if name in skill_versions and latest != skill_versions[name]:
+            errors.append(
+                f"{name}: latest_skill_version {latest} does not match "
+                f"metadata.version {skill_versions[name]}"
+            )
+
+    return errors
+
+
+def validate_repository(
+    skills_root: Path = SKILLS_ROOT, manifest_path: Path | None = None
+) -> list[str]:
     if not skills_root.is_dir():
         return [f"Missing skills directory: {skills_root}"]
 
@@ -142,7 +216,12 @@ def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
 
     errors = []
     names: dict[str, list[str]] = {}
+    skill_versions = {}
     for skill_dir in skill_dirs:
+        if not skill_dir.name.startswith("shiftcare-"):
+            errors.append(
+                f"{skill_dir.name}: skill name must start with 'shiftcare-'"
+            )
         try:
             errors.extend(
                 f"{skill_dir.name}: {error}" for error in validate_skill(skill_dir)
@@ -174,6 +253,8 @@ def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
             errors.append(
                 f"{skill_dir.name}: metadata.version must be a valid SemVer string"
             )
+        else:
+            skill_versions[skill_dir.name] = version
 
         errors.extend(
             f"{skill_dir.name}: {error}"
@@ -185,6 +266,13 @@ def validate_repository(skills_root: Path = SKILLS_ROOT) -> list[str]:
     for name, folders in names.items():
         if len(folders) > 1:
             errors.append(f"duplicate skill name '{name}': {', '.join(folders)}")
+
+    errors.extend(
+        validate_compatibility_manifest(
+            manifest_path or skills_root.parent / COMPATIBILITY_MANIFEST.name,
+            skill_versions,
+        )
+    )
 
     return errors
 

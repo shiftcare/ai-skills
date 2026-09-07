@@ -1,10 +1,10 @@
 ---
-name: onboarding-check
+name: shiftcare-onboarding-check
 description: Check whether a ShiftCare account is set up properly and report a setup scorecard with the next step for each gap. Covers clients, staff, pay groups, pay items, first shift, qualifications, shift types, locations, and teams. Distinguishes the sample data every new account is created with from data a person actually entered. Use when the user is new to ShiftCare, asks "is my account set up", "what is left to set up", or wants an onboarding checklist. Read-only.
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "2.5.2"
+  version: "2.5.3"
 ---
 
 # ShiftCare onboarding check
@@ -21,8 +21,8 @@ Once the server's tools are available, call `check_skill_compatibility` once per
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 
 - `up_to_date`: continue.
-- `update_available`: continue, tell the user an update is available, and show `npx skills update onboarding-check`.
-- `update_required`: stop and show `npx skills update onboarding-check`.
+- `update_available`: continue, tell the user an update is available, and show `npx skills update shiftcare-onboarding-check`.
+- `update_required`: stop and show `npx skills update shiftcare-onboarding-check`.
 - `unrecognized`: stop and warn the user that the skill is not recognized.
 - `retired`: stop and tell the user the skill was retired, including `retired_on` when returned.
 
