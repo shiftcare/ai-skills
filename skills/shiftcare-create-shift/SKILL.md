@@ -143,9 +143,22 @@ someone. Note that recurring series cannot be vacant — see Step 5.
 
 ## Step 3 — Get the account's UTC offset
 
-No MCP tool reports the account's time zone directly. `list_account_locations` returns names
-and addresses but no zone, and on some accounts it is not enabled at all. Read the offset off
-an existing shift instead:
+**The zone you need is the shift's location's zone, not the account's.** Server-side, an
+offset-less datetime is parsed in the resolved account location's own time zone, and the
+account setting's zone is only the fallback when that location has none. A location resolves
+even when no `account_location_id` is sent — the account's default location is used — so on a
+multi-location account the zone that interprets your input can differ from the account's own.
+This is the reason the explicit offset is not optional: it makes the question moot.
+
+`whoami` may report a `time_zone` for the account as an IANA name. **That is the account
+setting's zone — the fallback — so it is not proof of how a datetime will be read.** Use it to
+sanity-check, and where the account has one location, or its default location has no zone of
+its own, it is the right zone. Do not treat it as authoritative on a multi-location account.
+
+No MCP tool reports a location's zone. `list_account_locations` returns names and addresses
+but no zone, and on some accounts it is not enabled at all. So read the offset off an existing
+shift instead — preferring a shift at the same location as the one you are about to create,
+since a shift elsewhere can carry a different offset entirely:
 
 1. Call `list_shifts` with `from_date` and `to_date` (both `YYYY-MM-DD`) spanning a few days
    **around the requested date**.
@@ -157,7 +170,8 @@ hour in exactly the way this step is meant to prevent.
 
 If that range comes back empty, **ask the user for their time zone or offset.** Guessing from
 the region is not good enough: a single account can have locations in Perth, Queensland,
-Melbourne and Hobart, which are three different offsets.
+Melbourne and Hobart, which are three different offsets — and that spread is exactly why the
+account-level zone cannot answer for a particular shift.
 
 Then build the datetimes from the user's wall-clock time plus that offset:
 `"tomorrow 9am to 5pm"` with `+10:00` → `start_at: 2026-09-05T09:00:00+10:00`,
