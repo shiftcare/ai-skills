@@ -40,6 +40,7 @@ in the skill frontmatter.
 | --- | --- |
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
 | [`shiftcare-onboarding-check`](skills/shiftcare-onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
+| [`shiftcare-daily-rundown`](skills/shiftcare-daily-rundown/SKILL.md) | Read-only daily sweep of yesterday's and today's shifts, grouped by urgency with a next step per finding. |
 | [`shiftcare-create-shift`](skills/shiftcare-create-shift/SKILL.md) | Create a one-off or recurring shift from a plain-language request, with mandatory confirmation before the write. |
 | [`shiftcare-cancel-shift`](skills/shiftcare-cancel-shift/SKILL.md) | Cancel a shift, choosing correctly between charging the client and not paying the carer. |
 
