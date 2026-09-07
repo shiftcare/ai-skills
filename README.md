@@ -30,14 +30,18 @@ Run every static skill check locally with:
 uv run --with skills-ref==0.1.1 scripts/validate_skills.py
 ```
 
+[`public_ai_skills.yml`](public_ai_skills.yml) publishes the minimum and latest
+supported version of each skill. Validation fails if it drifts from the versions
+in the skill frontmatter.
+
 ## Skills
 
 | Skill | What it does |
 | --- | --- |
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
 | [`shiftcare-basics`](skills/shiftcare-basics/SKILL.md) | Understand ShiftCare concepts and pick the right MCP tools for a task. |
-| [`staff-compliance-check`](skills/staff-compliance-check/SKILL.md) | Sweep staff credentials for expired, expiring, missing and unverified records, optionally against an advisory NDIS or Australian aged-care checklist. |
-| [`onboarding-check`](skills/onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
+| [`shiftcare-staff-compliance-check`](skills/shiftcare-staff-compliance-check/SKILL.md) | Sweep staff credentials for expired, expiring, missing and unverified records, optionally against an advisory NDIS or Australian aged-care checklist. |
+| [`shiftcare-onboarding-check`](skills/shiftcare-onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
 
 ## Requirements
 
