@@ -218,6 +218,10 @@ def validate_repository(
     names: dict[str, list[str]] = {}
     skill_versions = {}
     for skill_dir in skill_dirs:
+        if not skill_dir.name.startswith("shiftcare-"):
+            errors.append(
+                f"{skill_dir.name}: skill name must start with 'shiftcare-'"
+            )
         try:
             errors.extend(
                 f"{skill_dir.name}: {error}" for error in validate_skill(skill_dir)

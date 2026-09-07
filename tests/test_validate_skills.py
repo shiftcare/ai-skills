@@ -23,7 +23,7 @@ class ValidateSkillsTest(unittest.TestCase):
             skills.mkdir()
             self.assertIn("No skills found", validate_repository(skills)[0])
 
-            valid = skills / "valid-skill"
+            valid = skills / "shiftcare-valid"
             (valid / "references").mkdir(parents=True)
             (valid / "references" / "guide.md").write_text(
                 "[Sibling][sibling]\n\n[sibling]: sibling.md\n"
@@ -31,19 +31,20 @@ class ValidateSkillsTest(unittest.TestCase):
             (valid / "references" / "sibling.md").write_text("# Sibling\n")
             (valid / "SKILL.md").write_text(
                 """---
-name: valid-skill
+name: shiftcare-valid
 description: A valid test skill.
 metadata:
   version: "1.2.3"
 ---
 See [the guide](references/guide.md).
+Run `npx skills update shiftcare-valid` when an update is required.
 """
-                + COMPATIBILITY_TEMPLATE.read_text().format(skill="valid-skill")
+                + COMPATIBILITY_TEMPLATE.read_text().format(skill="shiftcare-valid")
             )
             (repository / "public_ai_skills.yml").write_text(
                 """shared:
   skills:
-    valid-skill:
+    shiftcare-valid:
       minimum_skill_version: "1.0.0"
       latest_skill_version: "1.2.3"
 """
@@ -85,7 +86,7 @@ Run scripts/missing.py, then `npx skills update another-skill`.
             duplicate.mkdir()
             (duplicate / "SKILL.md").write_text(
                 """---
-name: valid-skill
+name: shiftcare-valid
 description: A duplicate test skill.
 metadata:
   version: "1.0.0"
@@ -104,6 +105,7 @@ description: Duplicate YAML keys are invalid.
             )
 
             errors = "\n".join(validate_repository(skills))
+            self.assertIn("skill name must start with 'shiftcare-'", errors)
             self.assertIn("metadata.version must be a valid SemVer string", errors)
             self.assertIn(
                 "compatibility check does not match scripts/compatibility_check.md",
@@ -118,18 +120,18 @@ description: Duplicate YAML keys are invalid.
             self.assertGreaterEqual(
                 errors.count("update command must be the literal"), 2
             )
-            self.assertIn("duplicate skill name 'valid-skill'", errors)
+            self.assertIn("duplicate skill name 'shiftcare-valid'", errors)
             self.assertIn("Invalid YAML", errors)
 
     def test_compatibility_manifest_must_match_published_skills(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
             skills = repository / "skills"
-            skill = skills / "example-skill"
+            skill = skills / "shiftcare-example"
             skill.mkdir(parents=True)
             (skill / "SKILL.md").write_text(
                 """---
-name: example-skill
+name: shiftcare-example
 description: An example skill.
 metadata:
   version: "2.1.0"
@@ -141,51 +143,53 @@ metadata:
             manifest.write_text(
                 """shared:
   skills:
-    example-skill:
+    shiftcare-example:
       minimum_skill_version: "2.0.0"
       latest_skill_version: "2.0.0"
 """
             )
             self.assertIn(
-                "example-skill: latest_skill_version 2.0.0 does not match metadata.version 2.1.0",
+                "shiftcare-example: latest_skill_version 2.0.0 does not match metadata.version 2.1.0",
                 validate_repository(skills),
             )
 
             manifest.write_text(
                 """shared:
   skills:
-    retired-skill:
+    shiftcare-retired:
       retired_on: "2026-01-03"
 """
             )
             self.assertIn(
-                "example-skill: missing from public_ai_skills.yml",
+                "shiftcare-example: missing from public_ai_skills.yml",
                 validate_repository(skills),
             )
 
             manifest.write_text(
                 """shared:
   skills:
-    example-skill:
+    shiftcare-example:
       minimum_skill_version: "2.2.0"
       latest_skill_version: "2.1.0"
-    missing-skill:
+    shiftcare-missing:
       minimum_skill_version: "1.0.0"
       latest_skill_version: "1.0.0"
-    retired-skill:
+    shiftcare-retired:
       retired_on: "2026-01-03"
 """
             )
             errors = validate_repository(skills)
             self.assertIn(
-                "example-skill: minimum_skill_version 2.2.0 is above latest_skill_version 2.1.0",
+                "shiftcare-example: minimum_skill_version 2.2.0 is above latest_skill_version 2.1.0",
                 errors,
             )
             self.assertIn(
-                "missing-skill: active manifest entry has no skill directory", errors
+                "shiftcare-missing: active manifest entry has no skill directory",
+                errors,
             )
             self.assertNotIn(
-                "retired-skill: active manifest entry has no skill directory", errors
+                "shiftcare-retired: active manifest entry has no skill directory",
+                errors,
             )
 
 
