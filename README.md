@@ -41,6 +41,7 @@ in the skill frontmatter.
 | [`shiftcare-mcp`](skills/shiftcare-mcp/SKILL.md) | Connect an agent to the ShiftCare MCP server and verify the connection. |
 | [`shiftcare-onboarding-check`](skills/shiftcare-onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
 | [`shiftcare-daily-rundown`](skills/shiftcare-daily-rundown/SKILL.md) | Read-only daily sweep of yesterday's and today's shifts, grouped by urgency with a next step per finding. |
+| [`shiftcare-complaints`](skills/shiftcare-complaints/SKILL.md) | Lodge and manage complaints through the ShiftCare MCP, including related-incident routing. |
 
 ## Requirements
 
