@@ -46,8 +46,9 @@ instead of reporting an empty rundown as "all clear".
    item's `account_location_time_zone`, and use it for every date comparison. A shift that
    ran 22:00–06:00 belongs to the day it started.
 
-Tell the user the sweep is read-only and costs roughly twenty to forty tool calls
-depending on how many staff and shifts are in the window.
+Tell the user the sweep is read-only, and that it costs roughly one call per shift in the
+window plus a handful — so a quiet day is a few calls and a busy roster is several dozen.
+Offer to narrow it to today only if the window looks large.
 
 ## What the tools do and do not give you
 
@@ -74,6 +75,14 @@ only `staff_id`, `date`, `client_ids` and `items`, the flag is off for the accou
 is **not** evidence nobody clocked in. This is the single worst failure mode of this skill:
 reporting "everyone clocked in fine" when the account simply does not expose clock times.
 See "Clock-ins" below for what to say instead.
+
+**And timesheets do not cover every shift.** It is tempting to treat the timesheet list as
+a cheap per-staff index of the window — it is not one. A staffed, even approved, shift can
+have no timesheet row at all, and a whole day of the roster can come back with none while
+the day before has several. Rows appear as payroll processing catches up, on its own
+schedule. So a timesheet is trustworthy for **what it contains** and says nothing by its
+**absence**: never infer from a missing row that a shift is unstaffed, was not worked, or
+does not exist. Coverage comes from `list_shift_staffs`, below — never from this list.
 
 **`list_allowances` is the account's allowance catalogue, not what was claimed.** It lists
 the allowance types the account has defined — a meal allowance, a sleepover allowance —
@@ -108,41 +117,39 @@ Keep per shift: `id`, `start_at`, `end_at`, `break_time`, `km`, `published`, `pe
 shift is not vacant, not a missed clock-in, and not a break breach. Cancellation is not
 deletion, so they do come back in the list.
 
-### 2. Coverage — the staffed set
+### 2. Coverage and who is on each shift
 
-This is how you get around `list_shifts` not returning staff, in a bounded number of calls
-rather than one call per shift.
+`list_shift_staffs` takes **one `shift_id` per call** and returns the assigned staff as
+`id` and `name`. It is the only authoritative answer to "who is on this shift", and the
+response is two fields per person, so the calls are many but each is tiny.
 
-1. `list_staff`, `per_page` 20, paging until done. Keep `id` and `name`.
-2. `list_shifts` over the same window with `staff_id` set to an **array of every staff id**.
-   The filter is an OR, so one call returns every shift in the window that has at least one
-   of those staff on it. Batch the ids **50 at a time** so the request stays inside URL
-   length limits, and page each batch.
-3. **Vacant = the step 1 shift ids minus the union of the step 2 ids.**
+Run it over the window's uncancelled shifts, **today's first**, and **cap it at 40 calls**.
+If the cap bites, say which shifts were not checked rather than reporting the rest as clean.
 
-Cost is one call per 50 staff plus paging, instead of one call per shift.
+- **Vacant** = a shift whose call returns `total_count` 0.
+- Everything else gives you the **shift → staff map** that steps 3 and 5 run on.
 
-Two limits to state rather than hide. A **group shift** can need several carers and this
-method only proves *one* is assigned, so a partly-filled group shift will not be flagged —
-say "at least one carer assigned" rather than "covered". And if the staff list itself was
-truncated, the vacant set is unreliable; report coverage as **cannot check** instead of
-listing wrong shifts.
+**Do not enumerate the account's staff to do this.** Listing every staff member and
+filtering shifts by `staff_id` looks cheaper and is not: `list_staff` pages at 20, and a
+mid-sized provider has hundreds of staff, so that route costs more calls than there are
+shifts and scales with headcount instead of with the roster. Reach for `list_staff` only to
+resolve a specific name.
 
-To attribute a specific vacant shift before reporting it, `list_shift_staffs` takes one
-`shift_id` per call and returns the assigned staff. Use it to confirm the handful you are
-about to report, not to scan the roster.
+One limit to state rather than hide: a **group shift** can need several carers, and nothing
+in the API exposes how many it wanted. `list_shift_staffs` tells you who is on it, not
+whether that is enough. Report "1 carer assigned" and let the coordinator judge it — never
+"covered".
 
-### 3. Per-staff intervals
+### 3. Rates, and clock times where they exist
 
-`list_timesheets` over the window, `include_staff` true, `per_page` 20, paged. A timesheet
-row exists for **every rostered staff assignment whether or not anyone turned up**, so the
-count means nothing on its own — but the rows are the cheapest per-staff view of the window
-there is. Each carries `staff_id`, `date`, `client_ids`, and `items[]` with `start_at`,
-`finish_at`, `break_minutes`, `amount`, `pricebook_id`, `pricebook_name`, `shift_type_name`
-and `account_location_time_zone`. When the account's clocking flag is on, the row also
-carries `clockin_at` and `clockout_at`.
+`list_timesheets` over the window, `include_staff` true, `per_page` 20, paged. Read it for
+two things only: the pricing fields on each item (`pricebook_id`, `pricebook_name`,
+`amount`, `payable_name`) and, where the account exposes them, `clockin_at` and
+`clockout_at`. Items also carry `start_at`, `finish_at`, `break_minutes`, `shift_type_name`
+and `account_location_time_zone`.
 
-This one sweep feeds the overlap, hours, break and rate checks below.
+Because the list is incomplete, treat it as **evidence about the rows it returns** and never
+as a denominator. Do not compute "how many shifts were worked" from it.
 
 ### 4. Clock-ins — and the trap
 
@@ -153,10 +160,12 @@ feature is off for the account.
 - **Flag off** → report the clock-in check as **"Cannot verify clock-ins on this account"**,
   explain that clocking data is not exposed to the API here, and point at the roster screen.
   Never render this as "no missed clock-ins" or fold it into an all-clear.
-- **Flag on** → a shift that has already **finished** and whose timesheet has no
-  `clockout_at` is a no clock-out. One that started more than a short grace period ago with
-  no `clockin_at` is a missed clock-in. Never flag a shift that has not started yet, and
-  never flag today's in-progress shifts for a missing clock-*out*.
+- **Flag on** → for a shift that has already **finished** and *has* a timesheet row, an
+  empty `clockout_at` is a no clock-out, and an empty `clockin_at` on a shift that started
+  more than a short grace period ago is a missed clock-in. Never flag a shift that has not
+  started yet, and never flag today's in-progress shifts for a missing clock-*out*.
+- **A shift with no timesheet row at all is neither.** Rows arrive as payroll catches up, so
+  its absence is unknown, not negative. Put those shifts under Could not check with a count.
 
 The fallback when the flag is off is `list_shift_events` with a single `shift_id`, looking
 for events named `start` and `finish` (`offline_clock_in` and `offline_clock_out` count
@@ -166,15 +175,17 @@ across the window. Most events on a shift are `create`, `update`, `approved`,
 
 ### 5. Overlaps, hours and breaks — approximate, and say so
 
-All three come from the step 3 intervals, computed client-side.
+All three run on the **step 2 shift → staff map**, using each shift's own `start_at`,
+`end_at` and `break_time`, computed client-side. Use that map rather than the timesheet
+items: it covers every shift in the window, and the timesheet list does not.
 
-- **Overlap.** Group the timesheet items by `staff_id` and compare intervals. Any two that
-  intersect are a double-booking. Convert to a single offset first; items can come from
-  locations in different time zones.
-- **Rolling hours.** Sum each staff member's item durations across the window. Flag anyone
+- **Overlap.** Invert the map to staff → shifts and compare each person's intervals. Any two
+  that intersect are a double-booking. Normalise to one offset first; shifts can sit in
+  locations with different time zones.
+- **Rolling hours.** Sum each staff member's shift durations across the window. Flag anyone
   well past a normal day. There is no award engine here, so report the number and let the
   coordinator judge it.
-- **Breaks.** Compare `break_minutes` against the item's duration. A long unbroken shift
+- **Breaks.** Compare the shift's `break_time` against its duration. A long unbroken shift
   with a zero break is worth surfacing.
 
 **State the limitation in the report, once:** these three are derived from rostered times
@@ -190,8 +201,8 @@ Two sources, and the cheaper one first.
   `no_expiration`. Flag anything expiring inside the next 30 days or already expired. Rows
   with `user_id: null` are account documents — report them as such, not against a person.
 - `list_staff_qualifications` needs a `staff_id` and handles **one staff member per call**.
-  Do not run it across the whole team. **Run it only for staff rostered in the window**,
-  which is the set you already have from step 2, and cap it at 20 calls — beyond that, say
+  Do not run it across the whole team — the account may have hundreds. **Run it only for
+  the distinct staff in the step 2 map**, and cap it at 20 calls — beyond that, say
   you checked the first 20 and offer to continue.
 
 It returns `qualification_id` and `expires_at`, **not the qualification's name**. To name
@@ -204,7 +215,9 @@ Two independent signals for the current week:
 
 - **Rate gaps, from the step 3 timesheet items.** An item with a null `pricebook_id`, or an
   `amount` of zero on an item that clearly represents worked hours, will not price. These
-  are the rows that silently drop out of an invoice run.
+  are the rows that silently drop out of an invoice run. Report them as "gaps found in the
+  timesheets available", never as a clean bill for the whole week — the rows that have not
+  landed yet cannot be checked.
 - **`list_invoiceable_items`** for the week, dates in the account time zone. Omit
   `client_id` to sweep every client, and page with the `next_cursor` it returns. Use
   `estimated_total` as the figure to quote. This tool is **not published on every regional
