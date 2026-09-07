@@ -3,7 +3,7 @@
 ## Public repository
 
 - No ShiftCare internals anywhere: ticket IDs, Linear, Notion, or Slack links, internal hostnames, staff names or emails, customer or account names, account IDs. This applies to files, branch names, commit messages, and PR titles and bodies.
-- Link only to public pages: `help.shiftcare.com`, `shiftcare.com`, and the regional MCP server URLs.
+- Link only to public pages: `help.shiftcare.com`, `shiftcare.com`, the regional MCP server URLs, and the regulator sites the compliance references cite — `ndiscommission.gov.au`, `agedcarequality.gov.au`, `health.gov.au`.
 - No credentials, tokens, or real account data, including in examples. Invented example data must look invented.
 
 ## Skills
