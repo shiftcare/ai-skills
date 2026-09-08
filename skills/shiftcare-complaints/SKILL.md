@@ -4,7 +4,7 @@ description: Lodge, triage and progress complaints in ShiftCare through the comp
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.0"
+  version: "1.2.0"
 ---
 
 # Manage ShiftCare complaints
@@ -69,7 +69,7 @@ Ask only for information needed to safely classify the matter. If it is unclear 
    - **Participant** → `client_id`, from `list_clients` with `filter_by_name`. The match is **partial** ("Sam" matches Samantha), so exactly one match → use it; more than one → list them and ask, never pick the closest string; none → say so and stop. Read back the account's own `display_name`, not a name you assembled from `first_name`/`family_name`. Cap `per_page` at 3–10, because each client row carries its contacts, teams and agreements inline. `create_complaint` returns 404 for a `client_id` this user cannot see — that is "not in your scope", not "does not exist".
    - **Assignee** → `assignee_id`, a **staff user id** from `list_staff` with `filter_by_name`, resolved the same way.
    - **Complainant and representative are free text.** The schema takes `complainant_name`, `complainant_relationship`, `complainant_phone`, `complainant_email`, `complainant_preferred_contact`, `representative_name`, `representative_organisation`, `representative_relationship` and `representative_contact`. There is nothing to resolve them against; do not go looking for a client or contact ID for either of them.
-5. Collect the intake details under **Ask for the missing details** below. Keep them factual and respectful, separate observations, allegations, and conclusions, and do not promise an outcome or record an unverified conclusion as fact.
+5. Collect the intake details by interviewing the user, as set out under **Interview the user for the missing details** below. Keep them factual and respectful, separate observations, allegations, and conclusions, and do not promise an outcome or record an unverified conclusion as fact.
 6. **Ask for the risk level** — one of `low`, `medium`, `high`, `critical`. Omitting it silently records `low`, so an agent that skips the question files every complaint as low risk. For anything involving harm, or under the `safety` category, or matching an incident-adjacent row of the table above, ask whether to set `safety_concern`; it defaults to `false`. Read both back in the confirmation. Set `is_private` **only when the user explicitly asks** for a private complaint, and tell them what it does: the record disappears from the register for everyone except its creator, its assignee and roles granted view-private — including any other user who connects through this agent.
 
 ## Confirm, then write once
@@ -98,9 +98,35 @@ Create it?
 - **Re-assert the account immediately before the write.** Call `whoami` again and check `account_id` still matches the one you resolved every ID against. The connection can be re-authenticated mid-task — the user reconnects the server, a token refreshes, they sign in as someone else — and come back as a different person on a different account, with no error and nothing in any tool response to announce it. Every `client_id` and `assignee_id` you hold belongs to the account you read it from. If `account_id` has changed, stop and start again from the resolution step so the user can re-confirm against the account they are actually in.
 - **Call the write tool exactly once, and never blindly retry a create.** The tool's own description warns that calling it twice creates two complaints. If the result is unclear, read first — `list_complaints` with today's `created_at_from` and the title as `search_text` — then decide.
 
-## Ask for the missing details
+## After it is created, offer corrective actions
 
-Ask the user for anything they have not already given, in the same order and groupings the ShiftCare lodgement form uses. Ask a group at a time, not one field at a time. Required fields are marked `*`; do not call `create_complaint` without them. Leave an optional field empty rather than guessing a value or inventing an ID.
+A lodged complaint is a record, not a response. Once you have reported the new complaint's `id`
+and `reference_number`, ask whether the user wants corrective action items raised against it —
+the assignable follow-up work: upload the signed form, check the change with the client,
+re-brief the team.
+
+Ask; do not assume. Some complaints are closed by an apology and need nothing.
+
+- **They want them** → use the `shiftcare-action-items` skill, passing the complaint's numeric
+  `id` as `parent_id` with `parent_type: Complaint`. That skill proposes a short shortlist,
+  scales it to the complaint's risk level and safety concern, resolves each owner through
+  `list_staff`, and confirms every action item separately before creating it.
+- **They decline, or corrective actions are not available on this account** → say so once and
+  stop. Do not describe the work as recorded when nothing was created, and do not list the
+  actions you would have suggested as though they exist.
+
+Creating an action item does not move the complaint's status. If the complaint should now be
+`under_investigation`, that is a separate confirmed step under **Manage the lifecycle**.
+
+## Interview the user for the missing details
+
+Lodging a complaint is a conversation, not a form dump. Ask, wait for the answer, then ask the next thing — one short message per group, in the order below, which is the order of the ShiftCare lodgement form. Required fields are marked `*`; do not call `create_complaint` without them.
+
+- **Ask only for what is still missing.** Repeat back what you already have in one line, then ask for the gap. If one answer covers several fields, take them all and move on.
+- **Wait for the answer before the next group.** Do not send all three groups in one message, and do not assemble the record on the strength of a question the user has not answered yet.
+- **Offer the choices.** Where a field has a fixed set of values, list them in the question, in their display form, so the user picks instead of guessing. Never make the user learn the enum keys.
+- **"I don't know" is an answer.** Leave that field empty rather than guessing a value or inventing an ID, and say in the read-back which fields are empty. Only a missing required field blocks the write; if one is refused, say what is still needed and stop.
+- **Keep a stated fact stated.** Never overwrite something the user told you with a tidier version of your own; the record repeats the complaint, it does not improve it.
 
 The user speaks display labels; the tool takes enum keys. Map them, and confirm the mapping in the read-back — "how a carer spoke to Mum" is `staff_conduct`, not a guess to leave unstated.
 
@@ -113,6 +139,8 @@ The user speaks display labels; the tool takes enum keys. Map them, and confirm 
 **3. Risk triage** — Risk Level\*, one of `low`, `medium`, `high`, `critical`, defaulting to `low` when omitted; whether the complaint raises an immediate `safety_concern`; and `risk_assessment_notes`, which are required when the safety concern is flagged.
 
 A flagged safety concern also means checking the emergency and incident process above before continuing.
+
+When the three groups are answered, go straight to the read-back under **Confirm, then write once** — the interview is not consent to create the record.
 
 ## ShiftCare Complaints MCP workflow
 
@@ -144,5 +172,6 @@ Read the complaint with `get_complaint` before changing it. Each transition stam
 - **To close, pass `status: closed` and `outcome_summary` in the same call** — without it the call is a 422. That summary is what the complainant was told, so confirm its text with the user in the explicit confirmation for the close, rather than discovering the requirement from an error.
 - Use the next valid status only after confirming the action, outcome, and any communication or follow-up required.
 - Keep an audit trail of contacts, decisions, evidence, actions, and the resolution. Attach or reference material only when it is relevant and permitted.
-- Where an investigation identifies corrective work, track it as an action item on the complaint. Read the existing ones with `list_action_items` using `parent_type` `Complaint` and `parent_id`, and `get_action_item` for detail. To add one, confirm it with the user first, then call `create_action_item` once with `title`, an `assignee_id` resolved through `list_staff`, and both `parent_type` `Complaint` and `parent_id` — one without the other is rejected. An action item cannot be edited afterwards, so confirm the title, description, due date, priority, and verification method before creating it. A closed complaint does not close a related incident or reportable-incident obligation.
+- Where an investigation identifies corrective work, track it as an action item on the complaint. Read the existing ones with `list_action_items` using `parent_type` `Complaint` and `parent_id`; use the `shiftcare-action-items` skill to suggest and create new ones, at any point in the lifecycle rather than only at lodgement. An action item cannot be edited or reassigned once created, so it confirms every field before writing.
+- A closed complaint does not close a related incident or reportable-incident obligation, and it does not close the action items still open against it. Report those when you close a complaint: `list_action_items` with the complaint as parent and `statuses` `open`, `responded`, `needs_more`.
 - Do not export, disclose, or summarise private complaint information beyond the user's authorised scope.
