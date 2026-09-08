@@ -4,7 +4,7 @@ description: Lodge, triage, and manage complaints in ShiftCare, including decidi
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.4"
+  version: "1.0.5"
 ---
 
 # Manage ShiftCare complaints
@@ -52,10 +52,22 @@ Ask only for information needed to safely classify the matter. If it is unclear 
 2. Search for a materially similar complaint before creating one. Use `list_complaints` with `search_text` for the name or reference when available, plus the narrowest participant, category, status, and date filters. Follow pagination until each relevant search scope is exhausted, then use `get_complaint` for every credible candidate. Compare the participant, subject, event or service period, concern, and requested outcome—not only matching words in the name.
 3. Present each likely match with its reference, status, and why it may be the same matter. If it is the same complaint, do not create a duplicate. If it is related but distinct, ask the user whether to lodge it separately; never silently merge distinct concerns.
 4. Resolve the participant, complainant, representative or advocate, and proposed assignee. Never invent an ID or choose between duplicate matches.
-5. Capture factual, respectful information: what was raised, when it was received, who is involved, desired outcome if known, and any actions already taken. Separate observations, allegations, and conclusions. Do not promise an outcome or record an unverified conclusion as fact.
+5. Collect the intake details under **Ask for the missing details** below. Keep them factual and respectful, separate observations, allegations, and conclusions, and do not promise an outcome or record an unverified conclusion as fact.
 6. Assess risk with the organisation's framework. Mark sensitive information private only when the user's role and organisational policy support it; still record enough for safe follow-up.
 
 Before any write tool, show the user the proposed record: title, concise factual description, category, received date, participant linkage, complainant/representative details, assignee, due date, risk, privacy setting, safety concern, and any related incident. Obtain explicit confirmation immediately before creating or changing a record. Create once, then read it back; never blindly retry an unclear create.
+
+## Ask for the missing details
+
+Ask the user for anything they have not already given, in the same order and groupings the ShiftCare lodgement form uses. Ask a group at a time, not one field at a time. Required fields are marked `*`; do not call `create_complaint` without them. Leave an optional field empty rather than guessing a value or inventing an ID.
+
+**1. Complaint details** — Title\*, a short summary; Description, what happened; Category\*, one of Service Delivery, Staff Conduct, Communication, Billing, Safety, Rights & Dignity, Privacy, Other; Date Received\*; Assignee, resolved through `list_staff`; Due Date, which cannot be before the date received; and private, only when the user asks for it.
+
+**2. Participant and complainant** — Linked client, the participant the complaint is about, resolved through `list_clients`; Complainant Name\*; Relationship, one of Self, Parent, Guardian, Sibling, Spouse, Child, Advocate, Support Coordinator, Other; Phone; Email, which must be a valid address; Preferred Contact, one of Phone, Email, Letter, In Person. Ask for a representative — name, organisation, relationship, contact — only when someone is acting for the complainant.
+
+**3. Risk triage** — Risk Level\*, one of Low, Medium, High, Critical, defaulting to Low; whether the complaint raises an immediate safety concern; and Risk Assessment Notes, which are required when the safety concern is flagged.
+
+A flagged safety concern also means checking the emergency and incident process above before continuing.
 
 ## ShiftCare Complaints MCP workflow
 
@@ -64,8 +76,8 @@ Use the Complaints MCP tools, not the web interface, to manage a complaint. The 
 1. Call `list_complaints` to find materially similar cases, following pagination for each relevant search scope, then use `get_complaint` before acting on every likely match. Do not create a complaint until the user has chosen whether it is new, duplicate, or related-but-distinct.
 2. If a new record is needed, assemble the user-confirmed details and call `create_complaint` once. `name` and `category` are required. Add only the optional fields available in the active schema, such as `description`, `received_date`, `assignee_id`, `due_date`, `is_private`, participant/complainant/representative details, and risk or safety information.
 3. Read the result with `get_complaint`; give the user its reference and current status.
-4. To correct or maintain complaint details, read first, show the proposed changed fields, obtain explicit confirmation, call `update_complaint`, then read it back.
-5. For lifecycle changes, read first, show the intended status and outcome, obtain explicit confirmation, call `update_complaint_status`, then read it back.
+4. The MCP exposes no tool that edits a complaint's details after creation. Only its status can change. Get every detail right before calling `create_complaint`, and tell the user a correction has to be made by an authorised administrator in ShiftCare itself.
+5. For lifecycle changes, read first, show the intended status and outcome, obtain explicit confirmation, call `update_complaint_status`, then read it back. Closing a complaint requires `outcome_summary` in the same call, and `closed` and `withdrawn` are terminal.
 
 If a related incident may already exist, use `list_incidents` to read it. If the user lacks access or a required tool is unavailable, explain the limitation and direct them to their authorised ShiftCare administrator or incident process. Do not substitute a web-interface write, and do not claim that an incident ticket or an internal “reported to NDIS” field notifies the NDIS Commission.
 
@@ -75,5 +87,5 @@ Read the complaint before changing it. The normal lifecycle is **Received → Ac
 
 - Use the next valid status only after confirming the action, outcome, and any communication or follow-up required.
 - Keep an audit trail of contacts, decisions, evidence, actions, and the resolution. Attach or reference material only when it is relevant and permitted.
-- Where an investigation identifies corrective work, assign and track it through the organisation's approved process. A closed complaint does not close a related incident or reportable-incident obligation.
+- Where an investigation identifies corrective work, track it as an action item on the complaint. Read the existing ones with `list_action_items` using `parent_type` `Complaint` and `parent_id`, and `get_action_item` for detail. To add one, confirm it with the user first, then call `create_action_item` once with `title`, an `assignee_id` resolved through `list_staff`, and both `parent_type` `Complaint` and `parent_id` — one without the other is rejected. An action item cannot be edited afterwards, so confirm the title, description, due date, priority, and verification method before creating it. A closed complaint does not close a related incident or reportable-incident obligation.
 - Do not export, disclose, or summarise private complaint information beyond the user's authorised scope.
