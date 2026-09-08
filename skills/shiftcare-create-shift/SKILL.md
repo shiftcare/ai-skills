@@ -411,7 +411,9 @@ cannot — an offer you cannot honour is worse than no offer.
 - **Add a description, break, travel km, or allowances** — also `update_shift`, and
   `list_allowances` to find allowance IDs.
 - **Check whether a vacant shift is advertised** — `list_job_board_postings`, filtered by the
-  shift ID. Read-only.
+  shift ID. Read-only, and **only if that tool is actually in the tool list**: its per-tool
+  gate is off on most accounts, so on many connections it is absent entirely. Do not offer
+  this without looking first.
 - **Record a progress note** — `create_progress_note`, but only once the shift has been
   worked. Do not offer this for a future shift.
 
@@ -421,9 +423,13 @@ cannot — an offer you cannot honour is worse than no offer.
   submitted *responses* and nothing else. There is no tool to assign a form, and no tool to
   list the account's forms at all, so you cannot even tell the user which forms exist. Point
   them at the shift in the app.
-- **Advertising a vacant shift on the Job Board.** `create_shift`'s own description names
-  `create_job_board_posting`, but that tool is not exposed — only the read side is. Do not
-  promise a posting you cannot make.
+- **Anything on the Job Board, including advertising a vacant shift.** `create_shift`'s own
+  description tells you to post a vacant shift "to the Job Board via
+  `create_job_board_posting`" — **that tool does not exist over MCP.** Not gated off: absent,
+  with no per-tool flag behind it, so it is not something an Admin can switch on. The read
+  side, `list_job_board_postings`, does exist but its gate is off on most accounts, so treat
+  the whole Job Board as app-only and check the tool list before offering even the read.
+  Never promise a posting.
 - **Price book, fund, pay group, per-shift travel billing, and additional charges** such as
   transport or equipment. See below.
 
