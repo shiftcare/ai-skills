@@ -41,19 +41,20 @@ CASES = [
 ]
 
 
+@pytest.mark.parametrize("skill", ["shiftcare-mcp", None], ids=["with-skill", "no-skill"])
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_task(case, model, mcp, workspaces):
+def test_task(case, skill, model, mcp, workspaces):
     result = run_agent(
         case["ask"],
         model,
-        workspaces["no-skill"],
-        skill=None,
+        workspaces["with-skill" if skill else "no-skill"],
+        skill=skill,
         mcp=mcp,
     )
     tool_calls = result["toolCalls"]
 
     test_case = LLMTestCase(
-        name=f"{model}: {case['name']}",
+        name=f"{model} / {skill or 'no skill'}: {case['name']}",
         input=case["ask"],
         actual_output=result["answer"],
         tools_called=to_deepeval_tool_calls(tool_calls),
@@ -62,7 +63,7 @@ def test_task(case, model, mcp, workspaces):
             "suite": "Read-only tasks",
             "case": case["name"],
             "model": model,
-            "skillVariant": "No skill",
+            "skillVariant": "With skill" if skill else "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],
             "turns": result["turns"],

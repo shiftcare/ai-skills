@@ -6,20 +6,36 @@ import pytest
 from runners.codex import parse_events
 
 
-def capture_scenario(monkeypatch, module_name, result, case_index=0):
+def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None):
     module = import_module(module_name)
     captured = []
     monkeypatch.setattr(module, "run_agent", lambda *args, **kwargs: result)
     monkeypatch.setattr(module, "assert_test", lambda case, metrics, **kwargs: captured.append((case, metrics)))
     kwargs = dict(
         case=module.CASES[case_index], model="invented-model", mcp=None,
-        workspaces={"no-skill": "/invented"},
+        workspaces={"with-skill": "/with-skill", "no-skill": "/no-skill"},
     )
     if module_name == "test_connection":
         module.test_connection(skill=None, **kwargs)
     else:
-        module.test_task(**kwargs)
+        module.test_task(skill=skill, **kwargs)
     return captured[0]
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected_variant"),
+    [("shiftcare-mcp", "With skill"), (None, "No skill")],
+)
+def test_tasks_record_both_skill_variants(monkeypatch, skill, expected_variant):
+    result = {
+        "answer": "Invented answer", "toolCalls": [],
+        "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
+        "durationMs": 1, "turns": 1,
+    }
+
+    case, _ = capture_scenario(monkeypatch, "test_tasks", result, skill=skill)
+
+    assert case.metadata["skillVariant"] == expected_variant
 
 
 @pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])

@@ -43,6 +43,12 @@ EVAL_MODELS=haiku ./evals/run.sh -k connection
 EVAL_MODELS=sonnet,gpt-5.6-luna ./evals/run.sh
 ```
 
+Runs use four parallel workers by default. Set `EVAL_WORKERS` to tune concurrency:
+
+```sh
+EVAL_WORKERS=2 ./evals/run.sh
+```
+
 Sonnet judges responses by default. Override the judge when Claude is unavailable:
 
 ```sh
