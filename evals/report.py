@@ -4,11 +4,21 @@ import html
 import json
 import os
 import pathlib
+import random
 import statistics
 
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
 DEFAULT_OUTPUT = ".deepeval/report.html"
+OVERHEAD_KEYS = (
+    "input_tokens",
+    "output_tokens",
+    "tokens",
+    "cost",
+    "duration_ms",
+    "turns",
+    "tool_calls",
+)
 
 
 def escape(value):
@@ -84,6 +94,7 @@ def normalize(source):
             "suite": suite,
             "case": case,
             "model": model,
+            "repeat": metadata.get("repeat", 1),
             "variant": variant,
             "input": first(raw, "input", default="Unavailable"),
             "output": first(raw, "actualOutput", "actual_output", default="Unavailable"),
@@ -126,28 +137,33 @@ def normalize(source):
 def pairs_for(results):
     return [
         (with_skill, no_skill)
-        for _, with_skill, no_skill in comparisons_for(results)
+        for _, _, with_skill, no_skill in comparisons_for(results)
         if with_skill and no_skill
     ]
 
 
 def comparisons_for(results):
     comparisons = []
-    models = []
+    identities = []
     for result in results:
-        if result["model"] not in models:
-            models.append(result["model"])
-    for model in models:
+        identity = (result["model"], result["repeat"])
+        if identity not in identities:
+            identities.append(identity)
+    for model, repeat in identities:
         with_skill = next(
-            (result for result in results if result["model"] == model and result["variant"] == "With skill"),
+            (result for result in results if (result["model"], result["repeat"]) == (model, repeat) and result["variant"] == "With skill"),
             None,
         )
         no_skill = next(
-            (result for result in results if result["model"] == model and result["variant"] == "No skill"),
+            (result for result in results if (result["model"], result["repeat"]) == (model, repeat) and result["variant"] == "No skill"),
             None,
         )
-        comparisons.append((model, with_skill, no_skill))
+        comparisons.append((model, repeat, with_skill, no_skill))
     return comparisons
+
+
+def comparison_label(model, repeat, results):
+    return f"{model} · repeat {repeat}" if len({result["repeat"] for result in results}) > 1 else model
 
 
 def number(value, kind="number"):
@@ -197,6 +213,34 @@ def paired_medians(pairs, key):
     return tuple(statistics.median(side) for side in zip(*available))
 
 
+def is_quality(key):
+    return key not in OVERHEAD_KEYS
+
+
+def paired_differences(pairs, key):
+    differences = []
+    for left, right in pairs:
+        left_value = result_value(left, key)
+        right_value = result_value(right, key)
+        if left_value is None or right_value is None:
+            continue
+        differences.append(
+            left_value - right_value if is_quality(key) else right_value - left_value
+        )
+    return differences
+
+
+def bootstrap_mean_interval(values, samples=10_000, seed=0):
+    if len(values) < 2:
+        return None, None
+    randomizer = random.Random(seed)
+    means = sorted(
+        statistics.mean(randomizer.choices(values, k=len(values)))
+        for _ in range(samples)
+    )
+    return means[250], means[9749]
+
+
 def result_value(result, key):
     if key.startswith("metric:"):
         return result["metric_scores"].get(key.removeprefix("metric:"))
@@ -204,10 +248,13 @@ def result_value(result, key):
 
 
 def measure_specs(results):
-    specs = [
+    specs = [("success", "Overall success", "score", True, "better", "worse")]
+    specs.extend(
+        [
         (f"metric:{name}", name, "score", True, "better", "worse")
         for name in metric_names(results)
-    ]
+        ]
+    )
     specs.extend(
         [
             ("input_tokens", "Input tokens", "number", False, "fewer", "more"),
@@ -234,12 +281,13 @@ def render_overview(suites, all_results):
             rows.append(
                 f'<tr class="case-row"><td colspan="{len(specs) + 2}"><a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · Case · {escape(case["name"])}</td></tr>'
             )
-            for model, with_skill, no_skill in comparisons_for(case["results"]):
+            for model, repeat, with_skill, no_skill in comparisons_for(case["results"]):
+                model_label = comparison_label(model, repeat, case["results"])
                 if not with_skill or not no_skill:
                     present = with_skill or no_skill
                     missing = "No skill" if with_skill else "With skill"
                     rows.append(
-                        f'<tr class="unavailable"><td><a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · {escape(model)}<small><a href="#result-{present["id"].lower()}" data-case="{case["id"]}">{present["id"]}</a> {escape(present["variant"].lower())}</small></td><td colspan="{len(specs) + 1}"><strong>comparison unavailable</strong> — missing {missing} result.</td></tr>'
+                        f'<tr class="unavailable"><td><a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · {escape(model_label)}<small><a href="#result-{present["id"].lower()}" data-case="{case["id"]}">{present["id"]}</a> {escape(present["variant"].lower())}</small></td><td colspan="{len(specs) + 1}"><strong>comparison unavailable</strong> — missing {missing} result.</td></tr>'
                     )
                     continue
                 cells = []
@@ -247,13 +295,16 @@ def render_overview(suites, all_results):
                     with_value = result_value(with_skill, key)
                     without_value = result_value(no_skill, key)
                     label = comparison(with_value, without_value, higher, positive, negative)
-                    css = "improved" if label not in ("Same", "comparison unavailable") and positive in label else "regressed" if negative in label else "unchanged"
+                    if not is_quality(key):
+                        css = "overhead"
+                    else:
+                        css = "improved" if label not in ("Same", "comparison unavailable") and positive in label else "regressed" if negative in label else "unchanged"
                     cells.append(
                         f'<td class="{css}"><strong>{escape(label)}</strong><small>{number(with_value, kind)} / {number(without_value, kind)}</small></td>'
                     )
                 rows.append(
                     "<tr><td>"
-                    f'<a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · {escape(with_skill["model"])}'
+                    f'<a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · {escape(model_label)}'
                     f'<small><a href="#result-{with_skill["id"].lower()}" data-case="{case["id"]}">{with_skill["id"]}</a> with skill / <a href="#result-{no_skill["id"].lower()}" data-case="{case["id"]}">{no_skill["id"]}</a> no skill</small></td>'
                     f'<td>{"Pass" if with_skill["success"] else "Fail"} / {"Pass" if no_skill["success"] else "Fail"}</td>'
                     + "".join(cells)
@@ -311,15 +362,37 @@ def render_all_results(suites, all_results):
     </section>"""
 
 
-def aggregate_rows(case_results):
+def effect_number(value, kind):
+    if value is None:
+        return "—"
+    if kind == "duration":
+        return f"{value / 1000:.1f}s"
+    if kind == "cost":
+        return f"${value:.4f}".rstrip("0").rstrip(".")
+    return f"{value:.2f}"
+
+
+def aggregate_rows(case_results, specs):
     pairs = pairs_for(case_results)
     rows = []
-    for key, label, kind, higher, positive, negative in measure_specs(case_results):
+    for key, label, kind, higher, positive, negative in specs:
         with_value, without_value = paired_medians(pairs, key)
+        differences = paired_differences(pairs, key)
+        wins = sum(value > 0 for value in differences)
+        ties = sum(value == 0 for value in differences)
+        losses = sum(value < 0 for value in differences)
+        mean = statistics.mean(differences) if differences else None
+        median = statistics.median(differences) if differences else None
+        low, high = bootstrap_mean_interval(differences)
+        interval = f"{effect_number(low, kind)} to {effect_number(high, kind)}" if low is not None else "—"
         rows.append(
-            f"<tr><td>{escape(label)}</td><td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td><td>{escape(comparison(with_value, without_value, higher, positive, negative))}</td></tr>"
+            f"<tr><td>{escape(label)}</td><td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td><td>{escape(comparison(with_value, without_value, higher, positive, negative))}</td><td>{wins} win{'s' if wins != 1 else ''} / {ties} tie{'s' if ties != 1 else ''} / {losses} loss{'es' if losses != 1 else ''}</td><td>{effect_number(mean, kind)}</td><td>{effect_number(median, kind)}</td><td>{interval}</td><td>n={len(differences)}</td></tr>"
         )
     return "".join(rows)
+
+
+def aggregate_table(case_results, specs):
+    return f'<table class="metrics"><thead><tr><th>Metric</th><th>With skill</th><th>No skill</th><th>Change</th><th>Wins / ties / losses</th><th>Mean effect</th><th>Median effect</th><th>95% interval</th><th>Sample</th></tr></thead><tbody>{aggregate_rows(case_results, specs)}</tbody></table>'
 
 
 def aggregate_impact(case_results):
@@ -376,13 +449,16 @@ def render_case(case, suite):
     results = case["results"]
     pairs = pairs_for(results)
     specs = measure_specs(results)
+    quality_specs = [spec for spec in specs if is_quality(spec[0])]
+    overhead_specs = [spec for spec in specs if not is_quality(spec[0])]
     model_headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
     model_rows = []
-    for model, with_skill, no_skill in comparisons_for(results):
+    for model, repeat, with_skill, no_skill in comparisons_for(results):
+        model_label = comparison_label(model, repeat, results)
         if not with_skill or not no_skill:
             missing = "No skill" if with_skill else "With skill"
             model_rows.append(
-                f'<tr class="unavailable"><td>{escape(model)}</td><td colspan="{len(specs) + 1}"><strong>comparison unavailable</strong> — missing {missing} result.</td></tr>'
+                f'<tr class="unavailable"><td>{escape(model_label)}</td><td colspan="{len(specs) + 1}"><strong>comparison unavailable</strong> — missing {missing} result.</td></tr>'
             )
             continue
         cells = []
@@ -393,7 +469,7 @@ def render_case(case, suite):
                 f'<td><strong>{escape(comparison(with_value, without_value, higher, positive, negative))}</strong><small>{number(with_value, kind)} / {number(without_value, kind)}</small></td>'
             )
         model_rows.append(
-            f"<tr><td>{escape(with_skill['model'])}</td><td>{'Pass' if with_skill['success'] else 'Fail'} / {'Pass' if no_skill['success'] else 'Fail'}</td>{''.join(cells)}</tr>"
+            f"<tr><td>{escape(model_label)}</td><td>{'Pass' if with_skill['success'] else 'Fail'} / {'Pass' if no_skill['success'] else 'Fail'}</td>{''.join(cells)}</tr>"
         )
     comparison_copy = f"{len(pairs)} paired model comparison{'s' if len(pairs) != 1 else ''}" if pairs else "comparison unavailable"
     return f"""
@@ -403,7 +479,9 @@ def render_case(case, suite):
         <section><h2>Case instructions</h2><div class="instructions">{escape(results[0]['input'] if results else 'Unavailable')}</div></section>
         <div class="facts"><span>{escape(comparison_copy)}</span><span>{len(results)} scenario results</span><span>With skill vs No skill</span></div>
         <h2>Aggregate impact</h2><div class="impact-grid">{aggregate_impact(results)}</div>
-        <h2>All metric changes</h2><p>Aggregate values pair each model with itself before taking the median.</p><table class="metrics"><thead><tr><th>Metric</th><th>With skill</th><th>No skill</th><th>Change</th></tr></thead><tbody>{aggregate_rows(results)}</tbody></table>
+        <h2>Quality</h2><p>Positive effects mean the skill improved the measure. Aggregate values pair each model and repeat before summarizing.</p>{aggregate_table(results, quality_specs)}
+        <h2>Overhead</h2><p>Positive effects mean the skill reduced operational overhead.</p>{aggregate_table(results, overhead_specs)}
+        <p>Intervals describe this scenario/model sample only; scanning many metrics creates multiple-comparison risk.</p>
         <h2>Per-model comparisons</h2><p>Raw values show with skill / no skill.</p><div class="matrix-wrap"><table class="metrics"><thead><tr><th>Model</th><th>Overall result</th>{model_headings}</tr></thead><tbody>{''.join(model_rows) or f'<tr><td colspan="{len(specs) + 2}">comparison unavailable</td></tr>'}</tbody></table></div>
         <h2>Scenario results</h2>{''.join(render_result(result) for result in results)}
       </article>"""

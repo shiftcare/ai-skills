@@ -41,7 +41,10 @@ The default models are `sonnet,haiku,gpt-5.6-terra,gpt-5.6-luna`. Override them 
 ```sh
 EVAL_MODELS=haiku ./evals/run.sh -k connection
 EVAL_MODELS=sonnet,gpt-5.6-luna ./evals/run.sh
+EVAL_REPEATS=5 ./evals/run.sh
 ```
+
+`EVAL_REPEATS` repeats each model, case, and skill-variant combination and defaults to `1`. Reports pair results by model and repeat so repeated runs remain independent comparisons.
 
 Runs use four parallel workers by default. Set `EVAL_WORKERS` to tune concurrency:
 

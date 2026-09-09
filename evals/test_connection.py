@@ -39,7 +39,7 @@ CASES = [
 
 @pytest.mark.parametrize("skill", ["shiftcare-mcp", None], ids=["with-skill", "no-skill"])
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_connection(case, skill, model, mcp, workspaces):
+def test_connection(case, skill, model, repeat, mcp, workspaces):
     cwd = workspaces["with-skill" if skill else "no-skill"]
     result = run_agent(case["ask"], model, cwd, skill, mcp)
     tool_calls = result["toolCalls"]
@@ -54,6 +54,7 @@ def test_connection(case, skill, model, mcp, workspaces):
             "suite": "Connection verification",
             "case": case["name"],
             "model": model,
+            "repeat": repeat,
             "skillVariant": "With skill" if skill else "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],

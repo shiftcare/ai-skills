@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from report import main
+import report
+from report import main, normalize
 
 
 def invented_run():
@@ -100,6 +101,25 @@ def visible_html(page):
     return page.split('<script type="application/json" id="source-data">', 1)[0]
 
 
+def test_paired_differences_make_improvement_positive():
+    pairs = [
+        ({"metric_scores": {"Quality": 0.8}, "cost": 1}, {"metric_scores": {"Quality": 0.3}, "cost": 3}),
+        ({"metric_scores": {"Quality": 0.4}, "cost": 4}, {"metric_scores": {"Quality": 0.6}, "cost": 2}),
+    ]
+
+    assert report.paired_differences(pairs, "metric:Quality") == pytest.approx([0.5, -0.2])
+    assert report.paired_differences(pairs, "cost") == [2, -2]
+
+
+def test_bootstrap_mean_interval_is_deterministic():
+    interval = report.bootstrap_mean_interval([1, 2, 3, 4])
+
+    assert interval == (1.5, 3.5)
+    assert interval[0] <= 2.5 <= interval[1]
+    assert report.bootstrap_mean_interval([]) == (None, None)
+    assert report.bootstrap_mean_interval([1]) == (None, None)
+
+
 def test_report_renders_comparisons_and_drilldown(tmp_path):
     _, _, page = write_report(tmp_path, invented_run())
     visible = visible_html(page)
@@ -155,6 +175,82 @@ def test_report_renders_unavailable_rows_for_models_in_mixed_case(tmp_path):
     assert "comparison unavailable" in overview_case
     assert "mixed-unpaired-model" in per_model
     assert "comparison unavailable" in per_model
+
+
+def test_report_pairs_repeats_independently(tmp_path):
+    run = invented_run()
+    first_pair = run["testCases"][:2]
+    second_pair = json.loads(json.dumps(first_pair))
+    for result in first_pair:
+        result["metadata"]["repeat"] = 1
+    for result in second_pair:
+        result["metadata"]["repeat"] = 2
+    second_pair[0]["metadata"]["usage"]["totalTokens"] = 300
+    second_pair[1]["metadata"]["usage"]["totalTokens"] = 150
+    run["testCases"] = first_pair + second_pair
+
+    _, _, page = write_report(tmp_path, run)
+    visible = visible_html(page)
+    detail = visible.split('id="case-panel-c1"', 1)[1]
+
+    assert "<strong>2</strong> paired comparisons" in visible
+    assert "2 paired model comparisons" in detail
+    assert "invented-model · repeat 1" in visible
+    assert "invented-model · repeat 2" in visible
+    assert "100 / 200" in detail
+    assert "300 / 150" in detail
+
+
+def test_normalize_defaults_legacy_results_to_repeat_one():
+    _, results, _ = normalize(invented_run())
+
+    assert {result["repeat"] for result in results} == {1}
+
+
+def test_report_summarizes_repeated_quality_before_overhead(tmp_path):
+    run = invented_run()
+    base_pair = run["testCases"][:2]
+    results = []
+    for repeat, (with_score, without_score) in enumerate(
+        [(0.8, 0.4), (0.3, 0.5), (0.5, 0.5), (1.0, 0.4)], 1
+    ):
+        pair = json.loads(json.dumps(base_pair))
+        for result, score in zip(pair, (with_score, without_score)):
+            result["metadata"]["repeat"] = repeat
+            result["metricsData"][0]["score"] = score
+        results.extend(pair)
+    run["testCases"] = results
+    for result in results:
+        result["metricsData"].append(
+            {"name": "Invented future metric", "score": 0.7, "success": True}
+        )
+
+    _, _, page = write_report(tmp_path, run)
+    detail = visible_html(page).split('id="case-panel-c1"', 1)[1]
+    quality = detail.split("<h2>Quality</h2>", 1)[1].split("<h2>Overhead</h2>", 1)[0]
+    overhead = detail.split("<h2>Overhead</h2>", 1)[1].split(
+        "<h2>Per-model comparisons</h2>", 1
+    )[0]
+
+    assert detail.index("<h2>Quality</h2>") < detail.index("<h2>Overhead</h2>")
+    assert "Invented future metric" in quality
+    assert "Invented future metric" not in overhead
+    assert "2 wins / 1 tie / 1 loss" in quality
+    assert "0.20" in quality
+    assert "n=4" in quality
+    assert "95% interval" in quality
+    assert "scenario/model sample" in detail
+    assert "multiple-comparison" in detail
+
+
+def test_report_does_not_colour_increased_overhead_as_quality_regression(tmp_path):
+    run = invented_run()
+    run["testCases"][0]["metadata"]["usage"]["totalTokens"] = 300
+
+    _, _, page = write_report(tmp_path, run)
+    overview_row = visible_html(page).split("<tr><td>", 1)[1].split("</tr>", 1)[0]
+
+    assert '<td class="overhead"><strong>1.5× more</strong><small>300 / 200</small></td>' in overview_row
 
 
 def test_report_uses_measure_words_for_zero_values_and_shows_card_values(tmp_path):

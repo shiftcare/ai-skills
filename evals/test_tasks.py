@@ -43,7 +43,7 @@ CASES = [
 
 @pytest.mark.parametrize("skill", ["shiftcare-mcp", None], ids=["with-skill", "no-skill"])
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_task(case, skill, model, mcp, workspaces):
+def test_task(case, skill, model, repeat, mcp, workspaces):
     result = run_agent(
         case["ask"],
         model,
@@ -63,6 +63,7 @@ def test_task(case, skill, model, mcp, workspaces):
             "suite": "Read-only tasks",
             "case": case["name"],
             "model": model,
+            "repeat": repeat,
             "skillVariant": "With skill" if skill else "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],
