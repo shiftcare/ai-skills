@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import os
 import stat
@@ -249,7 +250,8 @@ def test_report_does_not_colour_increased_overhead_as_quality_regression(tmp_pat
     run["testCases"][0]["metadata"]["usage"]["totalTokens"] = 300
 
     _, _, page = write_report(tmp_path, run)
-    overview_row = visible_html(page).split("<tr><td>", 1)[1].split("</tr>", 1)[0]
+    comparisons = visible_html(page).split("<h2>Case comparisons</h2>", 1)[1]
+    overview_row = comparisons.split("<tr><td>", 1)[1].split("</tr>", 1)[0]
 
     assert '<td class="overhead"><strong>1.5× more</strong><small>300 / 200</small></td>' in overview_row
 
@@ -420,3 +422,78 @@ def test_report_writes_to_the_named_run_path(tmp_path, monkeypatch):
     written = list((tmp_path / "reports").glob("*.html"))
     assert len(written) == 1
     assert written[0].stat().st_mode & 0o777 == 0o600
+
+
+def test_current_tree_hashes_are_stable_and_include_all_skill_files(tmp_path):
+    skill = tmp_path / "skill"
+    skill.mkdir()
+    (skill / "z.txt").write_text("invented z")
+    nested = skill / "nested"
+    nested.mkdir()
+    (nested / "a.txt").write_text("invented a")
+    digest = hashlib.sha256()
+    for relative, content in (
+        ("nested/a.txt", b"invented a"),
+        ("z.txt", b"invented z"),
+    ):
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(content)
+        digest.update(b"\0")
+
+    scenario = tmp_path / "scenario.py"
+    scenario.write_text('CASES = [{"quality": "invented", "name": "case"}]\n')
+    canonical = b'[{"name":"case","quality":"invented"}]'
+
+    assert report.directory_hash(skill) == digest.hexdigest()[:12]
+    assert report.cases_hash(scenario) == hashlib.sha256(canonical).hexdigest()[:12]
+
+
+def test_report_rolls_up_matrix_and_suite_without_cross_case_pair_collisions(tmp_path):
+    run = invented_run()
+    first_pair = run["testCases"][:2]
+    second_pair = json.loads(json.dumps(first_pair))
+    for result, score in zip(second_pair, (0.2, 0.8)):
+        result["metadata"].update({"case": "invented second case"})
+        result["metricsData"][0]["score"] = score
+    run["testCases"] = first_pair + second_pair
+
+    _, _, page = write_report(tmp_path, run)
+    rollup = visible_html(page).split('id="rollup-performance"', 1)[1].split(
+        "<h2>Case comparisons</h2>", 1
+    )[0]
+
+    assert "Whole matrix" in rollup
+    assert "Connection verification" in rollup
+    assert "2 / 2 (100.0%)" in rollup
+    assert "0 / 2 (0.0%)" in rollup
+    assert "<td>-0.10</td>" in rollup
+    assert "<td>n=2</td>" in rollup
+
+
+def test_report_shows_case_samples_current_tree_hashes_and_low_sample_warning(tmp_path):
+    _, _, page = write_report(tmp_path, invented_run())
+    detail = visible_html(page).split('id="case-panel-c1"', 1)[1].split(
+        'id="case-panel-c2"', 1
+    )[0]
+
+    assert "Samples and current-tree provenance" in detail
+    assert "invented-model · With skill: <strong>n=1</strong>" in detail
+    assert "invented-model · No skill: <strong>n=1</strong>" in detail
+    assert "Low sample count:" in detail
+    assert "skill_hash=" in detail and "scenario_hash=" in detail
+    assert "cannot be verified against them" in detail
+
+
+def test_all_tables_contain_pathological_reasons_at_narrow_width(tmp_path):
+    run = invented_run()
+    run["testCases"][0]["metricsData"][0]["reason"] = "x" * 10_000
+
+    _, _, page = write_report(tmp_path, run)
+    visible = visible_html(page)
+
+    assert '<div class="matrix-wrap"><table class="metrics result-metrics">' in visible
+    assert '<th class="reason">Reason</th>' in visible
+    assert '<td class="reason">' + "x" * 10_000 in visible
+    assert ".reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}" in visible
+    assert visible.count("<table") == visible.count('<div class="matrix-wrap"><table')

@@ -1,5 +1,7 @@
 import argparse
+import ast
 import datetime
+import hashlib
 import html
 import json
 import os
@@ -10,6 +12,15 @@ import statistics
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
 REPORTS_DIR = "reports"
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+SKILL_DIR = PROJECT_ROOT / "skills" / "shiftcare-mcp"
+SCENARIO_FILES = {
+    "Connection verification": PROJECT_ROOT / "evals" / "test_connection.py",
+    "Read-only tasks": PROJECT_ROOT / "evals" / "test_tasks.py",
+}
+# The statistical gate is 5% over 80 with-skill samples; at 20 repeats, one
+# observation changes a case/arm rate by no more than five percentage points.
+MIN_CASE_ARM_SAMPLES = 20
 OVERHEAD_KEYS = (
     "input_tokens",
     "output_tokens",
@@ -132,6 +143,31 @@ def normalize(source):
                 )
         suites.append({"id": suite_id, "name": suite, "cases": cases})
     return run, results, suites
+
+
+def directory_hash(directory):
+    digest = hashlib.sha256()
+    for path in sorted(path for path in directory.rglob("*") if path.is_file()):
+        digest.update(path.relative_to(directory).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:12]
+
+
+def cases_hash(path):
+    tree = ast.parse(path.read_text(), filename=str(path))
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "CASES"
+            for target in statement.targets
+        ):
+            cases = ast.literal_eval(statement.value)
+            canonical = json.dumps(
+                cases, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+            return hashlib.sha256(canonical.encode()).hexdigest()[:12]
+    raise ValueError(f"CASES not found in {path}")
 
 
 def pairs_for(results):
@@ -314,6 +350,8 @@ def render_overview(suites, all_results):
     <section id="overview-view" class="matrix-view">
       <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Skill impact overview</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div><button class="download-button" type="button">Download JSON</button></div>
       <div class="summary-strip"><span><strong>{sum(len(pairs_for(case['results'])) for suite in suites for case in suite['cases'])}</strong> paired comparisons</span><span><strong>{len(all_results)}</strong> scenario results</span></div>
+      {render_rollups(suites, all_results)}
+      <h2>Case comparisons</h2>
       <div class="matrix-wrap"><table class="matrix"><thead><tr><th>Model pair</th><th>Overall result</th>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     </section>"""
 
@@ -392,7 +430,69 @@ def aggregate_rows(case_results, specs):
 
 
 def aggregate_table(case_results, specs):
-    return f'<table class="metrics"><thead><tr><th>Metric</th><th>With skill</th><th>No skill</th><th>Change</th><th>Wins / ties / losses</th><th>Mean effect</th><th>Median effect</th><th>95% interval</th><th>Sample</th></tr></thead><tbody>{aggregate_rows(case_results, specs)}</tbody></table>'
+    return f'<div class="matrix-wrap"><table class="metrics"><thead><tr><th>Metric</th><th>With skill</th><th>No skill</th><th>Change</th><th>Wins / ties / losses</th><th>Mean effect</th><th>Median effect</th><th>95% interval</th><th>Sample</th></tr></thead><tbody>{aggregate_rows(case_results, specs)}</tbody></table></div>'
+
+
+def pass_rate(results, key, variant):
+    selected = [result for result in results if result["variant"] == variant]
+    if key == "success":
+        values = [result["success"] for result in selected]
+    elif key.startswith("metric:"):
+        name = key.removeprefix("metric:")
+        values = [
+            metric.get("success")
+            for result in selected
+            for metric in result["metrics"]
+            if metric.get("name") == name and metric.get("success") is not None
+        ]
+    else:
+        return "—"
+    if not values:
+        return "—"
+    passed = sum(bool(value) for value in values)
+    return f"{passed} / {len(values)} ({passed / len(values):.1%})"
+
+
+def rollup_table(results, pairs, specs):
+    rows = []
+    for key, label, kind, higher, positive, negative in specs:
+        with_value, without_value = paired_medians(pairs, key)
+        differences = paired_differences(pairs, key)
+        mean = statistics.mean(differences) if differences else None
+        median = statistics.median(differences) if differences else None
+        low, high = bootstrap_mean_interval(differences)
+        interval = (
+            f"{effect_number(low, kind)} to {effect_number(high, kind)}"
+            if low is not None
+            else "—"
+        )
+        rows.append(
+            f"<tr><td>{escape(label)}</td>"
+            f'<td>{pass_rate(results, key, "With skill")}</td>'
+            f'<td>{pass_rate(results, key, "No skill")}</td>'
+            f"<td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td>"
+            f"<td>{escape(comparison(with_value, without_value, higher, positive, negative))}</td>"
+            f"<td>{effect_number(mean, kind)}</td><td>{effect_number(median, kind)}</td>"
+            f"<td>{interval}</td><td>n={len(differences)}</td></tr>"
+        )
+    return f'<div class="matrix-wrap"><table class="metrics rollup"><thead><tr><th>Metric</th><th>With skill pass rate</th><th>No skill pass rate</th><th>With skill median</th><th>No skill median</th><th>Change</th><th>Mean effect</th><th>Median effect</th><th>95% interval</th><th>Paired sample</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+
+
+def render_rollups(suites, all_results):
+    specs = measure_specs(all_results)
+    all_pairs = [
+        pair for suite in suites for case in suite["cases"] for pair in pairs_for(case["results"])
+    ]
+    sections = [
+        f'<h3>Whole matrix</h3>{rollup_table(all_results, all_pairs, specs)}'
+    ]
+    for suite in suites:
+        suite_results = [result for case in suite["cases"] for result in case["results"]]
+        suite_pairs = [pair for case in suite["cases"] for pair in pairs_for(case["results"])]
+        sections.append(
+            f"<h3>{escape(suite['name'])}</h3>{rollup_table(suite_results, suite_pairs, specs)}"
+        )
+    return f'<section id="rollup-performance"><h2>Roll-up performance</h2><p>Positive effects mean better quality or lower overhead. Pass rates are per arm; intervals use paired case/model/repeat observations.</p>{"".join(sections)}</section>'
 
 
 def aggregate_impact(case_results):
@@ -425,7 +525,7 @@ def render_result(result):
             f'<td class="{metric_status.lower()}-text">{metric_status}</td>'
             f'<td>{number(metric.get("score"), "score")}</td>'
             f'<td>{number(metric.get("threshold"), "score")}</td>'
-            f'<td>{escape(metric.get("reason") or "No reason stored")}</td></tr>'
+            f'<td class="reason">{escape(metric.get("reason") or "No reason stored")}</td></tr>'
         )
     tool_sections = []
     for index, tool in enumerate(result["tools"], 1):
@@ -439,13 +539,13 @@ def render_result(result):
         <summary><a class="entity-id" href="#result-{result['id'].lower()}">{result['id']}</a><strong>{escape(result['model'])}</strong><small>{escape(result['variant'])}</small><span class="status {status.lower()}">{status}</span></summary>
         <div class="result-content">
           <div class="facts"><span>{number(result['tokens'])} tokens</span><span>{number(result['cost'], 'cost')} estimated cost</span><span>{number(result['duration_ms'], 'duration')}</span><span>{number(result['turns'])} turns</span><span>{number(result['tool_calls'])} tool calls</span></div>
-          <table class="metrics"><thead><tr><th>Metric</th><th>Status</th><th>Score</th><th>Threshold</th><th>Reason</th></tr></thead><tbody>{''.join(metric_rows)}</tbody></table>
+          <div class="matrix-wrap"><table class="metrics result-metrics"><thead><tr><th>Metric</th><th>Status</th><th>Score</th><th>Threshold</th><th class="reason">Reason</th></tr></thead><tbody>{''.join(metric_rows)}</tbody></table></div>
           <div class="trace"><section class="turn user"><div class="turn-label">User input</div><div class="message">{escape(result['input'])}</div></section>{''.join(tool_sections)}<section class="turn assistant"><div class="turn-label">Assistant · final response</div><div class="message">{escape(result['output'])}</div></section></div>
         </div>
       </details>"""
 
 
-def render_case(case, suite):
+def render_case(case, suite, skill_hash, scenario_hash):
     results = case["results"]
     pairs = pairs_for(results)
     specs = measure_specs(results)
@@ -472,12 +572,31 @@ def render_case(case, suite):
             f"<tr><td>{escape(model_label)}</td><td>{'Pass' if with_skill['success'] else 'Fail'} / {'Pass' if no_skill['success'] else 'Fail'}</td>{''.join(cells)}</tr>"
         )
     comparison_copy = f"{len(pairs)} paired model comparison{'s' if len(pairs) != 1 else ''}" if pairs else "comparison unavailable"
+    sample_counts = []
+    for model in dict.fromkeys(result["model"] for result in results):
+        for variant in ("With skill", "No skill"):
+            count = sum(
+                result["model"] == model and result["variant"] == variant
+                for result in results
+            )
+            if count:
+                sample_counts.append((model, variant, count))
+    sample_summary = "".join(
+        f"<span>{escape(model)} · {escape(variant)}: <strong>n={count}</strong></span>"
+        for model, variant, count in sample_counts
+    )
+    warning = (
+        f'<p class="warning"><strong>Low sample count:</strong> at least one model/arm group has fewer than {MIN_CASE_ARM_SAMPLES} results; estimates may swing materially with one observation.</p>'
+        if any(count < MIN_CASE_ARM_SAMPLES for _, _, count in sample_counts)
+        else ""
+    )
     return f"""
       <article id="case-panel-{case['id'].lower()}" class="case-panel" data-case-panel="{case['id']}" hidden>
         <span class="entity-label"><a class="entity-id" href="#suite-{suite['id'].lower()}">{suite['id']}</a> · Suite</span><p>{escape(suite['name'])}</p>
         <span class="entity-label"><a class="entity-id" href="#case-{case['id'].lower()}">{case['id']}</a> · Case</span><h1>{escape(case['name'])}</h1>
         <section><h2>Case instructions</h2><div class="instructions">{escape(results[0]['input'] if results else 'Unavailable')}</div></section>
         <div class="facts"><span>{escape(comparison_copy)}</span><span>{len(results)} scenario results</span><span>With skill vs No skill</span></div>
+        <section class="provenance"><h2>Samples and current-tree provenance</h2><div class="facts">{sample_summary}</div>{warning}<p><code>skill_hash={escape(skill_hash)}</code> · <code>scenario_hash={escape(scenario_hash or 'unavailable')}</code></p><p class="caveat">Hashes describe the current working tree at report time. This result file has no historical content hashes, so the evaluated skill and scenarios cannot be verified against them.</p></section>
         <h2>Aggregate impact</h2><div class="impact-grid">{aggregate_impact(results)}</div>
         <h2>Quality</h2><p>Positive effects mean the skill improved the measure. Aggregate values pair each model and repeat before summarizing.</p>{aggregate_table(results, quality_specs)}
         <h2>Overhead</h2><p>Positive effects mean the skill reduced operational overhead.</p>{aggregate_table(results, overhead_specs)}
@@ -487,7 +606,7 @@ def render_case(case, suite):
       </article>"""
 
 
-def render_case_view(suites):
+def render_case_view(suites, skill_hash, scenario_hashes):
     navigation = []
     panels = []
     for suite in suites:
@@ -500,7 +619,7 @@ def render_case_view(suites):
             cases.append(
                 f'<details id="case-{case["id"].lower()}" open><summary><button type="button" data-case="{case["id"]}"><span class="entity-id">{case["id"]}</span> · {escape(case["name"])}</button></summary>{links}</details>'
             )
-            panels.append(render_case(case, suite))
+            panels.append(render_case(case, suite, skill_hash, scenario_hashes.get(suite["name"])))
         navigation.append(
             f'<details id="suite-{suite["id"].lower()}" open><summary><span class="entity-id">{suite["id"]}</span> · {escape(suite["name"])}</summary>{"".join(cases)}</details>'
         )
@@ -514,7 +633,7 @@ def render_case_view(suites):
 STYLE = """
 :root{--ink:#18212b;--muted:#66717d;--rule:#d7dde3;--paper:#fff;--soft:#f4f6f8;--good:#176b45;--bad:#a12b2b;--header:64px;color-scheme:light}
 *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font:14px/1.45 ui-sans-serif,system-ui,sans-serif}a{color:inherit}button{font:inherit}.report-header{position:sticky;top:0;z-index:20;background:#17212b;color:#fff;min-height:var(--header);padding:12px 24px;display:flex;align-items:center;justify-content:space-between}.view-tabs{display:flex;gap:5px}.view-tabs button,.download-button{border:1px solid #89929c;border-radius:5px;background:transparent;color:inherit;padding:8px 12px;cursor:pointer}.view-tabs button.active{background:#fff;color:#17212b}.view-tabs button:focus-visible,.download-button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #efb83d;outline-offset:2px}.saved{color:#d7dde3}.matrix-view{padding:28px}.view-head{display:flex;justify-content:space-between;gap:20px;align-items:start}.view-head h1,.case-panel h1{margin:.2rem 0}.matrix-view .download-button{color:var(--ink)}.summary-strip,.facts{display:flex;gap:24px;flex-wrap:wrap;background:var(--soft);padding:12px;margin:18px 0}.summary-strip span,.facts span{white-space:nowrap}.matrix-wrap{overflow:auto;border:1px solid var(--rule)}table{border-collapse:collapse;width:100%}th,td{padding:9px 11px;border-bottom:1px solid var(--rule);vertical-align:top;text-align:left;white-space:nowrap}th{position:sticky;top:var(--header);background:#e9edf1;z-index:3;color:var(--muted)}td small,.matrix td a+small{display:block;color:var(--muted)}.suite-row td{background:#293746;color:#fff;font-weight:700}.case-row td{background:#e9edf1;font-weight:650}.unavailable td{background:#fff8df}.best{background:#def2e7}.worst{background:#f9dddd}.improved,.pass-text{color:var(--good)}.regressed,.fail-text{color:var(--bad)}.entity-id{font-family:ui-monospace,monospace;font-weight:750}.entity-label,.turn-label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.legend{margin:10px 0}.key{display:inline-block;width:12px;height:12px;margin:0 4px 0 14px}.report-grid{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{border-right:1px solid var(--rule);padding:24px;min-height:calc(100vh - var(--header));background:var(--soft)}aside details{scroll-margin-top:calc(var(--header) + 14px)}aside summary{padding:6px 0}aside summary button{border:0;background:transparent;text-align:left;cursor:pointer;padding:0}aside a{display:block;padding:5px 0 5px 18px;text-decoration:none}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.dot.pass{background:var(--good)}.dot.fail{background:var(--bad)}main{padding:28px;min-width:0}.case-panel,.result-detail{scroll-margin-top:calc(var(--header) + 14px)}.case-panel section{margin:20px 0}.instructions,.message{white-space:pre-wrap;border-left:3px solid #89929c;padding:12px;background:var(--soft)}.metrics{margin:10px 0 24px}.metrics th{top:var(--header)}.matrix-wrap th{top:0}.result-detail{border:1px solid var(--rule);margin:10px 0}.result-detail>summary{display:grid;grid-template-columns:60px 1fr 1fr auto;gap:12px;align-items:center;padding:12px;cursor:pointer}.result-content{padding:0 14px 14px}.turn{margin:12px 0}.tool-call{border:1px solid #c7b8db}.tool-call summary{padding:9px;background:#eee8f5;font-weight:700}.tool-body{display:grid;grid-template-columns:1fr 1fr}.tool-body>div{padding:10px;min-width:0}.tool-body>div+div{border-left:1px solid #c7b8db}pre{overflow:auto;white-space:pre-wrap;margin:.5rem 0 0}.privacy{padding:20px 28px;color:var(--muted);border-top:1px solid var(--rule)}[hidden]{display:none!important}
-.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border:1px solid var(--rule);margin:10px 0 24px}.impact{padding:12px}.impact+.impact{border-left:1px solid var(--rule)}.impact span,.impact strong{display:block}
+.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border:1px solid var(--rule);margin:10px 0 24px}.impact{padding:12px}.impact+.impact{border-left:1px solid var(--rule)}.impact span,.impact strong{display:block}.reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}.warning{padding:12px;border-left:4px solid #b16b00;background:#fff3cd}.caveat{color:var(--muted)}
 @media(max-width:800px){:root{--header:100px}.report-header,.view-head{align-items:start;flex-direction:column}.report-grid{display:block}aside{min-height:0;border-right:0;border-bottom:1px solid var(--rule)}.tool-body{grid-template-columns:1fr}.tool-body>div+div{border-left:0;border-top:1px solid #c7b8db}}
 """
 
@@ -560,6 +679,12 @@ followFragment();
 
 def render(source, source_path):
     _, results, suites = normalize(source)
+    skill_hash = directory_hash(SKILL_DIR)
+    scenario_hashes = {
+        suite["name"]: cases_hash(SCENARIO_FILES[suite["name"]])
+        for suite in suites
+        if suite["name"] in SCENARIO_FILES
+    }
     saved = datetime.datetime.fromtimestamp(source_path.stat().st_mtime).astimezone()
     saved_iso = saved.isoformat(timespec="seconds")
     saved_text = saved.strftime("%d %b %Y, %H:%M:%S %Z")
@@ -568,7 +693,7 @@ def render(source, source_path):
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>MCP evaluation report</title><style>{STYLE}</style></head>
 <body><header class="report-header"><strong>MCP evaluation report</strong><span class="saved">Results saved <time datetime="{saved_iso}">{escape(saved_text)}</time></span><nav class="view-tabs" aria-label="Report views"><button id="overview-tab" class="active" type="button">Overview</button><button id="results-tab" type="button">All results</button><button id="case-tab" type="button">Case detail</button></nav></header>
-{render_overview(suites, results)}{render_all_results(suites, results)}{render_case_view(suites)}
+{render_overview(suites, results)}{render_all_results(suites, results)}{render_case_view(suites, skill_hash, scenario_hashes)}
 <p class="privacy">This report contains local evaluation inputs, tool outputs, and judge reasons. Keep it private and do not upload it.</p>
 <script type="application/json" id="source-data">{source_json}</script><script>{SCRIPT}</script></body></html>"""
 
