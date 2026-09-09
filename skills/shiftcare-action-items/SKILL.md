@@ -4,7 +4,7 @@ description: Suggest, assign and track corrective action items in ShiftCare — 
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Manage ShiftCare action items
@@ -143,11 +143,41 @@ happens.
 
 ## Step 2 — Resolve the assignee to a real person
 
-`assignee_id` is a **staff user id**, from `list_staff` with `filter_by_name`. It is required —
-an action item with no owner cannot be created.
+`assignee_id` is a **staff user id**, from `list_staff`. It is required — an action item with no
+owner cannot be created. Do not ask "who should own this?" into thin air. Offer candidates first,
+and fall back to asking for a name or an email.
 
-The match is **partial** ("Sam" matches Samantha), so: exactly one match → use it; more than one
-→ list them and ask, never pick the closest string; none → say so and stop.
+**Suggest the people already connected to the matter.** For an action item on a complaint, two
+sources are worth reading before you ask:
+
+- **The complaint's own assignee.** `get_complaint` returns `assignee_id` and `assignee_name` —
+  the person already handling the matter, and usually the right owner for follow-up work.
+- **The staff who worked the shifts the complaint is about.** With the participant's `client_id`
+  and the window the complaint covers, call `list_shifts` with `client_id` and a `from_date`/
+  `to_date` **pair** (both are required, and the results are 20 per page), then `list_shift_staffs`
+  for each shift — it takes **one shift per call**, so keep the window to the days the complaint
+  actually names and stop once you have the distinct staff. Say which shift and date each name
+  came from.
+
+Present them as a short numbered list — name, and why they are on it — and let the user pick one,
+or name someone else. Never assign to a suggestion the user has not chosen.
+
+**The staff on those shifts are often the subject of the complaint.** Say so when you offer them,
+and do not assign corrective work to the person complained about unless the user chooses them
+deliberately.
+
+**Otherwise ask for a name or an email.**
+
+- **A name** → `list_staff` with `filter_by_name`. The match is **partial** ("Sam" matches
+  Samantha), so: exactly one match → use it; more than one → list them and ask, never pick the
+  closest string; none → say so and stop.
+- **An email** → there is **no email filter**. Try `filter_by_name` on the name part of the
+  address, then confirm by comparing the `email` on the returned row exactly — a partial name
+  match is not proof of the right person. If that finds nothing, page `list_staff` (20 per page,
+  `_metadata.total_count` tells you how far it runs) and match `email` exactly. On a large
+  account say that is a lot of pages and ask for a name instead.
+
+Read the chosen person back by the `name` the account returned, with their id, before you use it.
 
 A 404 from `create_action_item` naming the staff id means that person is not in this account —
 it is "not in your scope", not "does not exist". Re-resolve through `list_staff` rather than
