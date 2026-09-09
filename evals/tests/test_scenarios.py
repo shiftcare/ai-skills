@@ -67,6 +67,73 @@ def test_tasks_record_both_skill_variants(monkeypatch, skill, expected_variant):
     assert case.metadata["skillVariant"] == expected_variant
 
 
+def test_client_lookup_case_is_bounded():
+    case = import_module("test_tasks").CASES[0]
+
+    assert case == {
+        "name": "client lookup returns up to five active clients",
+        "ask": "Name up to five active clients.",
+        "expected_tool": "list_clients",
+        "quality": (
+            "Names no more than five real active clients from the account; does not "
+            "fabricate clients or claim it has no access."
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected_count"),
+    [("shiftcare-mcp", 1), (None, 0)],
+)
+def test_tasks_score_skill_non_activation_only_with_installed_skill(
+    monkeypatch, skill, expected_count
+):
+    result = {
+        "answer": "Invented answer", "toolCalls": [],
+        "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
+        "durationMs": 1, "turns": 1,
+    }
+
+    case, metrics, _ = capture_scenario(monkeypatch, "test_tasks", result, skill=skill)
+    activation_metrics = [metric for metric in metrics if metric.__name__ == "Skill Activation"]
+
+    assert len(activation_metrics) == expected_count
+    if activation_metrics:
+        assert activation_metrics[0].measure(case) == 1
+
+
+def test_team_lookup_case_is_bounded():
+    assert {
+        "name": "team lookup returns up to five teams",
+        "ask": "Name up to five ShiftCare teams.",
+        "expected_tool": "list_teams",
+        "quality": "Names no more than five real teams and does not fabricate teams.",
+    } in import_module("test_tasks").CASES
+
+
+def test_account_identity_uses_whoami_without_connection_protocol(monkeypatch):
+    module = import_module("test_connection")
+    expected_case = {
+        "name": "account identity uses whoami without connection verification",
+        "ask": "What ShiftCare account am I signed into?",
+        "expected_tools": ["whoami"],
+        "quality": "Names the signed-in account from whoami and does not invent access details.",
+    }
+    case_index = module.CASES.index(expected_case)
+    result = {
+        "answer": "Invented account", "toolCalls": [],
+        "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
+        "durationMs": 1, "turns": 1,
+    }
+
+    case, metrics, _ = capture_scenario(
+        monkeypatch, "test_connection", result, case_index=case_index
+    )
+
+    assert [tool.name for tool in case.expected_tools] == ["whoami"]
+    assert all(metric.__name__ != "Connection Protocol" for metric in metrics)
+
+
 @pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])
 def test_scenarios_record_repeat(monkeypatch, module_name):
     result = {

@@ -3,7 +3,7 @@ from deepeval.test_case import LLMTestCase, ToolCall
 
 from judge import ClaudeJudge
 import metrics
-from metrics import ConnectionProtocol, ToolResultIntegrity
+from metrics import ConnectionProtocol, SkillActivation, ToolResultIntegrity
 
 
 TEST_CASE = LLMTestCase(input="Invented input", actual_output="Invented output")
@@ -55,6 +55,47 @@ def test_tool_result_integrity_fails_truncated_output(output):
 
     assert score == 0
     assert "list_clients" in metric.reason
+
+
+@pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        ({"name": "Skill", "input": {"skill": "shiftcare-mcp"}}, True),
+        (
+            {
+                "name": "command_execution",
+                "input": {"command": "sed -n '1,200p' skills/shiftcare-mcp/SKILL.md"},
+            },
+            True,
+        ),
+        (
+            {
+                "name": "command_execution",
+                "input": {"command": "grep -r shiftcare-mcp ."},
+            },
+            False,
+        ),
+        ({"name": "whoami", "input": {}}, False),
+    ],
+)
+def test_loaded_shiftcare_mcp_detects_skill_loading_calls(call, expected):
+    assert metrics.loaded_shiftcare_mcp(call) is expected
+
+
+@pytest.mark.parametrize(
+    ("calls", "expected", "score"),
+    [
+        ([{"name": "Skill", "input": {"skill": "shiftcare-mcp"}}], True, 1),
+        ([], False, 1),
+        ([{"name": "Skill", "input": {"skill": "shiftcare-mcp"}}], False, 0),
+    ],
+)
+def test_skill_activation_scores_whether_observation_matches_expectation(calls, expected, score):
+    metric = SkillActivation(calls, expected=expected)
+
+    assert metric.measure(TEST_CASE) == score
+    assert metric.is_successful() == bool(score)
+    assert metric.__name__ == "Skill Activation"
 
 
 

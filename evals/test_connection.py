@@ -34,6 +34,12 @@ CASES = [
             "mcp_available is false, explains why instead of calling other tools."
         ),
     },
+    {
+        "name": "account identity uses whoami without connection verification",
+        "ask": "What ShiftCare account am I signed into?",
+        "expected_tools": ["whoami"],
+        "quality": "Names the signed-in account from whoami and does not invent access details.",
+    },
 ]
 
 

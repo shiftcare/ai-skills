@@ -6,18 +6,25 @@ from deepeval.test_case import LLMTestCase, SingleTurnParams, ToolCall
 import pytest
 
 from judge import ClaudeJudge
-from metrics import ShiftDate, ToolResultIntegrity, agent_trace, agentic_metrics, to_deepeval_tool_calls
+from metrics import (
+    ShiftDate,
+    SkillActivation,
+    ToolResultIntegrity,
+    agent_trace,
+    agentic_metrics,
+    to_deepeval_tool_calls,
+)
 from runners import run_agent
 
 
 CASES = [
     {
-        "name": "client lookup picks list_clients",
-        "ask": "What active clients do we have?",
+        "name": "client lookup returns up to five active clients",
+        "ask": "Name up to five active clients.",
         "expected_tool": "list_clients",
         "quality": (
-            "Lists one or more real clients from the account; does not fabricate or "
-            "claim it has no access."
+            "Names no more than five real active clients from the account; does not "
+            "fabricate clients or claim it has no access."
         ),
     },
     {
@@ -28,6 +35,12 @@ CASES = [
             "Reports tomorrow's shifts (or clearly states there are none); does not "
             "invent shifts."
         ),
+    },
+    {
+        "name": "team lookup returns up to five teams",
+        "ask": "Name up to five ShiftCare teams.",
+        "expected_tool": "list_teams",
+        "quality": "Names no more than five real teams and does not fabricate teams.",
     },
     {
         "name": "invoice question picks list_invoices",
@@ -101,6 +114,8 @@ def test_task(case, skill, model, repeat, mcp, workspaces):
         ToolResultIntegrity(tool_calls),
         *agentic_metrics(judge, case["ask"]),
     ]
+    if skill:
+        metrics.append(SkillActivation(tool_calls, expected=False))
     if case["expected_tool"] == "list_shifts":
         metrics.append(ShiftDate(tool_calls, (date.today() + timedelta(days=1)).isoformat()))
     assert_test(test_case, metrics, run_async=True)
