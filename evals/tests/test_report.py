@@ -204,7 +204,7 @@ def test_report_pairs_repeats_independently(tmp_path):
 
 
 def test_normalize_defaults_legacy_results_to_repeat_one():
-    _, results, _ = normalize(invented_run())
+    results, _ = normalize(invented_run()["testCases"])
 
     assert {result["repeat"] for result in results} == {1}
 
@@ -401,15 +401,17 @@ def test_report_is_private_before_any_content_is_written(tmp_path, monkeypatch, 
     assert len(writes) == 1
 
 
-def test_default_output_is_a_named_run_under_reports(tmp_path):
+def test_default_output_is_a_named_run_under_reports(tmp_path, monkeypatch):
     source = tmp_path / "run.json"
     source.write_text(json.dumps({"testCases": []}))
     os.utime(source, (1757000000, 1757000000))
+    monkeypatch.chdir(tmp_path)
+
+    report.main([str(source)])
 
     expected = datetime.datetime.fromtimestamp(1757000000).astimezone().strftime("%Y-%m-%d-%H%M%S")
-
-    assert report.default_output(source).parent.name == "reports"
-    assert report.default_output(source).name == f"{expected}.html"
+    written = list((tmp_path / "reports").glob("*.html"))
+    assert [path.name for path in written] == [f"{expected}.html"]
 
 
 def test_report_writes_to_the_named_run_path(tmp_path, monkeypatch):
@@ -497,3 +499,47 @@ def test_all_tables_contain_pathological_reasons_at_narrow_width(tmp_path):
     assert '<td class="reason">' + "x" * 10_000 in visible
     assert ".reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}" in visible
     assert visible.count("<table") == visible.count('<div class="matrix-wrap"><table')
+
+
+def test_report_pools_every_archived_run_by_default(tmp_path, monkeypatch):
+    # The point of pooling: a narrow run adds samples to a case instead of
+    # replacing the matrix, so a case's n grows as runs accumulate.
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "2026-01-01-000000.json").write_text(json.dumps(invented_run()))
+    (runs / "2026-01-02-000000.json").write_text(json.dumps(invented_run()))
+    monkeypatch.chdir(tmp_path)
+
+    report.main([])
+
+    page = next((tmp_path / "reports").glob("*.html")).read_text()
+    visible = visible_html(page)
+    assert "these 2 runs combined, totalling 6 results" in visible
+    assert "2026-01-01-000000.json" in visible
+    assert "2026-01-02-000000.json" in visible
+
+
+def test_report_falls_back_to_the_deepeval_run_when_nothing_is_archived(tmp_path, monkeypatch):
+    source = tmp_path / report.DEFAULT_INPUT
+    source.parent.mkdir(parents=True)
+    source.write_text(json.dumps(invented_run()))
+    monkeypatch.chdir(tmp_path)
+
+    report.main([])
+
+    assert len(list((tmp_path / "reports").glob("*.html"))) == 1
+
+
+def test_pooled_results_keep_distinct_ids_across_files(tmp_path, monkeypatch):
+    # normalize() numbers results with a running counter, so pooling has to run
+    # it once over the concatenated results rather than once per file.
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "a.json").write_text(json.dumps(invented_run()))
+    (runs / "b.json").write_text(json.dumps(invented_run()))
+    monkeypatch.chdir(tmp_path)
+
+    report.main([])
+
+    page = next((tmp_path / "reports").glob("*.html")).read_text()
+    assert 'id="result-r6"' in visible_html(page).lower() or "R6" in visible_html(page)

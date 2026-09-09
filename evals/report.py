@@ -12,6 +12,7 @@ import statistics
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
 REPORTS_DIR = "reports"
+RUNS_DIR = "runs"
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 SKILL_DIR = PROJECT_ROOT / "skills" / "shiftcare-mcp"
 SCENARIO_FILES = {
@@ -65,9 +66,12 @@ def legacy_identity(name):
     return "Unclassified", name, "Unknown model", "No skill"
 
 
-def normalize(source):
+def raw_results_of(source):
     run = source.get("testRunData", source) if isinstance(source, dict) else {}
-    raw_results = first(run, "testCases", "test_cases", "testResults", default=[])
+    return first(run, "testCases", "test_cases", "testResults", default=[]) or []
+
+
+def normalize(raw_results):
     results = []
     suite_ids = {}
     case_ids = {}
@@ -142,7 +146,7 @@ def normalize(source):
                     }
                 )
         suites.append({"id": suite_id, "name": suite, "cases": cases})
-    return run, results, suites
+    return results, suites
 
 
 def directory_hash(directory):
@@ -348,7 +352,7 @@ def render_overview(suites, all_results):
                 )
     return f"""
     <section id="overview-view" class="matrix-view">
-      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Skill impact overview</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div><button class="download-button" type="button">Download JSON</button></div>
+      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Skill impact overview</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div><button class="download-button" type="button">Download latest run JSON</button></div>
       <div class="summary-strip"><span><strong>{sum(len(pairs_for(case['results'])) for suite in suites for case in suite['cases'])}</strong> paired comparisons</span><span><strong>{len(all_results)}</strong> scenario results</span></div>
       {render_rollups(suites, all_results)}
       <h2>Case comparisons</h2>
@@ -393,7 +397,7 @@ def render_all_results(suites, all_results):
     pass_rate = (sum(result["success"] for result in all_results) / len(all_results) * 100) if all_results else 0
     return f"""
     <section id="results-view" class="matrix-view" hidden>
-      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>All results</h1><p>Suite and case groups with every persisted value.</p></div><button class="download-button" type="button">Download JSON</button></div>
+      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>All results</h1><p>Suite and case groups with every persisted value.</p></div><button class="download-button" type="button">Download latest run JSON</button></div>
       <div class="summary-strip"><span><strong>{len(all_results)}</strong> scenario results</span><span><strong>{pass_rate:.1f}%</strong> pass rate</span></div>
       <div class="legend"><i class="key best"></i> Best within case <i class="key worst"></i> Worst within case</div>
       <div class="matrix-wrap"><table class="matrix"><thead><tr><th>ID</th><th>Model</th><th>Skill variant</th><th>Result</th>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>
@@ -606,7 +610,7 @@ def render_case(case, suite, skill_hash, scenario_hash):
       </article>"""
 
 
-def render_case_view(suites, skill_hash, scenario_hashes):
+def render_case_view(suites, skill_hash, scenario_hashes, provenance):
     navigation = []
     panels = []
     for suite in suites:
@@ -623,10 +627,19 @@ def render_case_view(suites, skill_hash, scenario_hashes):
         navigation.append(
             f'<details id="suite-{suite["id"].lower()}" open><summary><span class="entity-id">{suite["id"]}</span> · {escape(suite["name"])}</summary>{"".join(cases)}</details>'
         )
+    rows = "".join(
+        f"<tr><td>{escape(path.name)}</td><td>{count}</td></tr>" for path, count in provenance
+    )
+    total = sum(count for _, count in provenance)
+    pooled = f"""
+      <section id="provenance"><h2>Runs pooled into this report</h2>
+        <p>Every case's numbers below are drawn from {'this run' if len(provenance) == 1 else f'these {len(provenance)} runs combined'}, totalling {total} results. A case's sample count reflects however many of these runs happened to cover it, so a case exercised by a single narrow run rests on fewer observations than the totals here suggest.</p>
+        <div class="matrix-wrap"><table><thead><tr><th>Run file</th><th>Results</th></tr></thead><tbody>{rows}</tbody></table></div>
+      </section>"""
     return f"""
     <section id="case-view" class="report-grid" hidden>
       <aside aria-label="Case navigation"><h2>Evaluation results</h2>{''.join(navigation)}</aside>
-      <main>{''.join(panels)}</main>
+      <main>{pooled}{''.join(panels)}</main>
     </section>"""
 
 
@@ -677,41 +690,73 @@ followFragment();
 """
 
 
-def render(source, source_path):
-    _, results, suites = normalize(source)
+def render(sources, saved):
+    """Render one page from one or more archived runs, pooled into a single set of results.
+
+    Pooling is what lets a narrow run (`./run.sh -k "Connection Protocol"`) add
+    samples to a case rather than replacing the matrix: every archived run in
+    `runs/` contributes its results, and the provenance table below records
+    which file each batch came from so a mixed pool stays visible.
+    """
+    raw_results = []
+    provenance = []
+    for path, source in sources:
+        raws = raw_results_of(source)
+        raw_results.extend(raws)
+        provenance.append((path, len(raws)))
+    results, suites = normalize(raw_results)
     skill_hash = directory_hash(SKILL_DIR)
     scenario_hashes = {
         suite["name"]: cases_hash(SCENARIO_FILES[suite["name"]])
         for suite in suites
         if suite["name"] in SCENARIO_FILES
     }
-    saved = datetime.datetime.fromtimestamp(source_path.stat().st_mtime).astimezone()
     saved_iso = saved.isoformat(timespec="seconds")
     saved_text = saved.strftime("%d %b %Y, %H:%M:%S %Z")
-    source_json = json.dumps(source, indent=2, ensure_ascii=False)
+    # Only the download button reads this, and every pooled run is already a
+    # file in runs/. Embedding the pool would grow the page linearly with it —
+    # 5 archived matrices reached 322MB — so offer the newest run and point at
+    # the rest, rather than duplicating gigabytes into an unopenable page.
+    source_json = json.dumps(sources[-1][1], indent=2, ensure_ascii=False)
     source_json = source_json.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>MCP evaluation report</title><style>{STYLE}</style></head>
 <body><header class="report-header"><strong>MCP evaluation report</strong><span class="saved">Results saved <time datetime="{saved_iso}">{escape(saved_text)}</time></span><nav class="view-tabs" aria-label="Report views"><button id="overview-tab" class="active" type="button">Overview</button><button id="results-tab" type="button">All results</button><button id="case-tab" type="button">Case detail</button></nav></header>
-{render_overview(suites, results)}{render_all_results(suites, results)}{render_case_view(suites, skill_hash, scenario_hashes)}
+{render_overview(suites, results)}{render_all_results(suites, results)}{render_case_view(suites, skill_hash, scenario_hashes, provenance)}
 <p class="privacy">This report contains local evaluation inputs, tool outputs, and judge reasons. Keep it private and do not upload it.</p>
 <script type="application/json" id="source-data">{source_json}</script><script>{SCRIPT}</script></body></html>"""
 
 
-def default_output(source_path):
-    saved = datetime.datetime.fromtimestamp(source_path.stat().st_mtime).astimezone()
-    return pathlib.Path(REPORTS_DIR) / f"{saved.strftime('%Y-%m-%d-%H%M%S')}.html"
+def input_paths(inputs):
+    """Resolve the run files to pool, newest last.
+
+    Defaults to every archived run so a narrow run adds samples to the pool
+    rather than replacing it. Falls back to DeepEval's latest-run file when
+    nothing has been archived yet, which keeps a bare `report.py` working on a
+    fresh checkout.
+    """
+    if inputs:
+        return [pathlib.Path(item) for item in inputs]
+    archived = sorted(pathlib.Path(RUNS_DIR).glob("*.json"))
+    return archived or [pathlib.Path(DEFAULT_INPUT)]
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Generate a private local DeepEval HTML report")
-    parser.add_argument("input", nargs="?", default=DEFAULT_INPUT)
+    parser.add_argument("inputs", nargs="*", help="run files to pool (default: every file in runs/)")
     parser.add_argument("-o", "--output")
     args = parser.parse_args(argv)
-    source_path = pathlib.Path(args.input)
-    output_path = pathlib.Path(args.output) if args.output else default_output(source_path)
-    source = json.loads(source_path.read_text())
-    page = render(source, source_path)
+    paths = input_paths(args.inputs)
+    sources = [(path, json.loads(path.read_text())) for path in paths]
+    saved = datetime.datetime.fromtimestamp(
+        max(path.stat().st_mtime for path in paths)
+    ).astimezone()
+    output_path = (
+        pathlib.Path(args.output)
+        if args.output
+        else pathlib.Path(REPORTS_DIR) / f"{saved.strftime('%Y-%m-%d-%H%M%S')}.html"
+    )
+    page = render(sources, saved)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(output_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as output:
