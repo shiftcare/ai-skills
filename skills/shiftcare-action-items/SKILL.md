@@ -4,7 +4,7 @@ description: Suggest, assign and track corrective action items in ShiftCare — 
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Manage ShiftCare action items
@@ -24,7 +24,7 @@ suggested it.
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to this skill's frontmatter `name` and `skill_version` set to its `metadata.version`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-action-items` and `skill_version` set to `1.1.1`.
 
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 

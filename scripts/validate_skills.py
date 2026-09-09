@@ -127,9 +127,13 @@ def validate_update_commands(
     return errors
 
 
-def validate_compatibility_check(body: str, skill_dir: Path) -> list[str]:
+def validate_compatibility_check(body: str, skill_dir: Path, version: str) -> list[str]:
+    # The Skill tool strips YAML frontmatter before the body reaches the agent,
+    # so a skill cannot tell the agent to read its own metadata.version. The
+    # template carries the literal version instead, and this check is what stops
+    # that literal drifting from the frontmatter it duplicates.
     required = COMPATIBILITY_TEMPLATE.read_text(encoding="utf-8").format(
-        skill=skill_dir.name
+        skill=skill_dir.name, version=version
     ).strip()
     if required in body:
         return []
@@ -256,10 +260,11 @@ def validate_repository(
         else:
             skill_versions[skill_dir.name] = version
 
-        errors.extend(
-            f"{skill_dir.name}: {error}"
-            for error in validate_compatibility_check(body, skill_dir)
-        )
+        if isinstance(version, str):
+            errors.extend(
+                f"{skill_dir.name}: {error}"
+                for error in validate_compatibility_check(body, skill_dir, version)
+            )
 
         errors.extend(validate_local_references(skill_dir, skills_root))
 
