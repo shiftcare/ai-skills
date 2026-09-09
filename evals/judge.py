@@ -6,6 +6,9 @@ from deepeval.models import DeepEvalBaseLLM
 from runners import run_agent
 
 
+_JUDGE_SLOTS = asyncio.Semaphore(int(os.getenv("EVAL_JUDGE_CONCURRENCY", "4")))
+
+
 class ClaudeJudge(DeepEvalBaseLLM):
     def __init__(self, workspaces):
         self.cwd = workspaces["no-skill"]
@@ -24,7 +27,8 @@ class ClaudeJudge(DeepEvalBaseLLM):
         )["answer"]
 
     async def a_generate(self, prompt):
-        return await asyncio.to_thread(self.generate, prompt)
+        async with _JUDGE_SLOTS:
+            return await asyncio.to_thread(self.generate, prompt)
 
     def get_model_name(self):
         runner = "Codex CLI" if self.name.startswith("gpt-") else "Claude Agent SDK"

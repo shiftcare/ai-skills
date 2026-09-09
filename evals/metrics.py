@@ -54,9 +54,9 @@ class ArgumentCorrectnessMetric(DeepEvalArgumentCorrectnessMetric):
 
 def agentic_metrics(judge, task):
     return [
-        TaskCompletionMetric(task=task, model=judge, async_mode=False),
-        StepEfficiencyMetric(model=judge, async_mode=False),
-        ArgumentCorrectnessMetric(model=judge, async_mode=False),
+        TaskCompletionMetric(task=task, model=judge, async_mode=True),
+        StepEfficiencyMetric(model=judge, async_mode=True),
+        ArgumentCorrectnessMetric(model=judge, async_mode=True),
     ]
 
 

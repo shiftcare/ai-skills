@@ -56,7 +56,7 @@ def workspaces():
     return json.loads(completed.stdout)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mcp():
     url = env_value("MCP_URL")
     if not url:

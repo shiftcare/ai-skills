@@ -69,7 +69,7 @@ def test_connection(case, skill, model, mcp, workspaces):
         ToolCorrectnessMetric(
             threshold=1,
             model=judge,
-            async_mode=False,
+            async_mode=True,
             should_exact_match=False,
             should_consider_ordering=False,
         ),
@@ -86,11 +86,11 @@ def test_connection(case, skill, model, mcp, workspaces):
             ],
             model=judge,
             threshold=0.5,
-            async_mode=False,
+            async_mode=True,
         ),
         ToolResultIntegrity(tool_calls),
         *agentic_metrics(judge, case["ask"]),
     ]
     if case.get("whoami_first"):
         metrics.append(ConnectionProtocol(tool_calls))
-    assert_test(test_case, metrics, run_async=False)
+    assert_test(test_case, metrics, run_async=True)

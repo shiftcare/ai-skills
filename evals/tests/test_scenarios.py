@@ -3,6 +3,7 @@ from importlib import import_module
 
 import pytest
 
+import conftest
 from runners.codex import parse_events
 
 
@@ -10,7 +11,7 @@ def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None)
     module = import_module(module_name)
     captured = []
     monkeypatch.setattr(module, "run_agent", lambda *args, **kwargs: result)
-    monkeypatch.setattr(module, "assert_test", lambda case, metrics, **kwargs: captured.append((case, metrics)))
+    monkeypatch.setattr(module, "assert_test", lambda case, metrics, **kwargs: captured.append((case, metrics, kwargs)))
     kwargs = dict(
         case=module.CASES[case_index], model="invented-model", mcp=None,
         workspaces={"with-skill": "/with-skill", "no-skill": "/no-skill"},
@@ -20,6 +21,23 @@ def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None)
     else:
         module.test_task(skill=skill, **kwargs)
     return captured[0]
+
+
+def test_mcp_fixture_is_session_scoped():
+    assert conftest.mcp._fixture_function_marker.scope == "session"
+
+
+@pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])
+def test_scenarios_run_metrics_asynchronously(monkeypatch, module_name):
+    result = {
+        "answer": "Invented answer", "toolCalls": [],
+        "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
+        "durationMs": 1, "turns": 1,
+    }
+
+    _, _, assert_kwargs = capture_scenario(monkeypatch, module_name, result)
+
+    assert assert_kwargs["run_async"] is True
 
 
 @pytest.mark.parametrize(
@@ -33,7 +51,7 @@ def test_tasks_record_both_skill_variants(monkeypatch, skill, expected_variant):
         "durationMs": 1, "turns": 1,
     }
 
-    case, _ = capture_scenario(monkeypatch, "test_tasks", result, skill=skill)
+    case, _, _ = capture_scenario(monkeypatch, "test_tasks", result, skill=skill)
 
     assert case.metadata["skillVariant"] == expected_variant
 
@@ -41,7 +59,7 @@ def test_tasks_record_both_skill_variants(monkeypatch, skill, expected_variant):
 @pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])
 def test_scenarios_preserve_unavailable_codex_cost(monkeypatch, module_name):
     result = parse_events([])
-    case, _ = capture_scenario(monkeypatch, module_name, result)
+    case, _, _ = capture_scenario(monkeypatch, module_name, result)
 
     assert case.metadata["usage"]["costUsd"] is None
     assert case.token_cost is None
@@ -61,7 +79,7 @@ def test_shift_requirements_reach_deepeval_as_scored_results(monkeypatch, scenar
         "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
         "durationMs": 1, "turns": 1,
     }
-    case, metrics = capture_scenario(monkeypatch, "test_tasks", result, case_index=1)
+    case, metrics, _ = capture_scenario(monkeypatch, "test_tasks", result, case_index=1)
     metric = next((item for item in metrics if item.__name__ == "Shift Date"), None)
 
     assert metric is not None, "date failures must be recorded as a deterministic metric"

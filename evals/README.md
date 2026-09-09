@@ -26,7 +26,7 @@ Log in once through the browser:
 node auth.mjs login
 ```
 
-The harness resolves a token immediately before every test. `node auth.mjs token` reuses a token with more than 30 seconds left or silently refreshes it. `MCP_TOKEN` from the environment or `.env` overrides the saved login. Refresh tokens are single-use: if a refresh request is interrupted, the saved login is lost and `token` asks you to run `login` again.
+The harness resolves a token once per pytest worker. `node auth.mjs token` reuses a token with more than 30 seconds left or silently refreshes it. `MCP_TOKEN` from the environment or `.env` overrides the saved login. Refresh tokens are single-use: if a refresh request is interrupted, the saved login is lost and `token` asks you to run `login` again.
 
 ## Run
 
@@ -48,6 +48,8 @@ Runs use four parallel workers by default. Set `EVAL_WORKERS` to tune concurrenc
 ```sh
 EVAL_WORKERS=2 ./evals/run.sh
 ```
+
+Model-based metrics run concurrently, with judge subprocesses bounded to four per worker. Set `EVAL_JUDGE_CONCURRENCY` to an explicit positive integer if provider limits require a lower bound. Total possible agent subprocesses are `EVAL_WORKERS × EVAL_JUDGE_CONCURRENCY`.
 
 Sonnet judges responses by default. Override the judge when Claude is unavailable:
 

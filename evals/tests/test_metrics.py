@@ -88,6 +88,13 @@ def test_agentic_metrics_include_completion_efficiency_and_arguments(monkeypatch
     assert names == ["Task Completion", "Step Efficiency", "Argument Correctness"]
 
 
+def test_agentic_metrics_are_async(monkeypatch):
+    monkeypatch.delenv("EVAL_JUDGE_MODEL", raising=False)
+    judge = ClaudeJudge({"no-skill": "/tmp/invented-workspace"})
+
+    assert all(metric.async_mode for metric in metrics.agentic_metrics(judge, "Invented task"))
+
+
 def test_argument_correctness_ignores_infrastructure_and_argumentless_tools():
     test_case = LLMTestCase(
         input="Invented input",
