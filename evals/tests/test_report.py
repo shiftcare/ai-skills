@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import stat
@@ -396,3 +397,26 @@ def test_report_is_private_before_any_content_is_written(tmp_path, monkeypatch, 
     finally:
         os.umask(old_umask)
     assert len(writes) == 1
+
+
+def test_default_output_is_a_named_run_under_reports(tmp_path):
+    source = tmp_path / "run.json"
+    source.write_text(json.dumps({"testCases": []}))
+    os.utime(source, (1757000000, 1757000000))
+
+    expected = datetime.datetime.fromtimestamp(1757000000).astimezone().strftime("%Y-%m-%d-%H%M%S")
+
+    assert report.default_output(source).parent.name == "reports"
+    assert report.default_output(source).name == f"{expected}.html"
+
+
+def test_report_writes_to_the_named_run_path(tmp_path, monkeypatch):
+    source = tmp_path / "run.json"
+    source.write_text(json.dumps({"testCases": []}))
+    monkeypatch.chdir(tmp_path)
+
+    report.main([str(source)])
+
+    written = list((tmp_path / "reports").glob("*.html"))
+    assert len(written) == 1
+    assert written[0].stat().st_mode & 0o777 == 0o600

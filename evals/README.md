@@ -74,11 +74,13 @@ Generate the private local HTML report from the latest full run or an explicit r
 ```sh
 cd evals
 uv run python report.py
-uv run python report.py .deepeval/.latest_test_run.json -o .deepeval/report.html
+uv run python report.py .deepeval/.latest_test_run.json -o somewhere/else.html
 ```
+
+Reports are written to `reports/<YYYY-MM-DD-HHMMSS>.html`, named from the source result file's modification time so each run keeps its own file instead of overwriting the last one. `-o` overrides the path. The `reports/` directory is committed but its contents are not.
 
 The HTML remains local and contains the full prompts, tool outputs, and judge reasons. “Results saved” uses the source result file's modification time, and Download JSON returns the complete source data.
 
 ## Privacy
 
-Evaluation results and judge reasons contain real account data. Keep `.deepeval/` local. Never run `deepeval view`, upload results, or share result files. Credentials remain in the ignored `.auth/` or `.env` files and must never be committed.
+Evaluation results and judge reasons contain real account data. Keep `.deepeval/` and `reports/` local. Never run `deepeval view`, upload results, or share result files. Credentials remain in the ignored `.auth/` or `.env` files and must never be committed.

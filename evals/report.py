@@ -9,7 +9,7 @@ import statistics
 
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
-DEFAULT_OUTPUT = ".deepeval/report.html"
+REPORTS_DIR = "reports"
 OVERHEAD_KEYS = (
     "input_tokens",
     "output_tokens",
@@ -573,13 +573,18 @@ def render(source, source_path):
 <script type="application/json" id="source-data">{source_json}</script><script>{SCRIPT}</script></body></html>"""
 
 
+def default_output(source_path):
+    saved = datetime.datetime.fromtimestamp(source_path.stat().st_mtime).astimezone()
+    return pathlib.Path(REPORTS_DIR) / f"{saved.strftime('%Y-%m-%d-%H%M%S')}.html"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Generate a private local DeepEval HTML report")
     parser.add_argument("input", nargs="?", default=DEFAULT_INPUT)
-    parser.add_argument("-o", "--output", default=DEFAULT_OUTPUT)
+    parser.add_argument("-o", "--output")
     args = parser.parse_args(argv)
     source_path = pathlib.Path(args.input)
-    output_path = pathlib.Path(args.output)
+    output_path = pathlib.Path(args.output) if args.output else default_output(source_path)
     source = json.loads(source_path.read_text())
     page = render(source, source_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
