@@ -26,7 +26,7 @@ Log in once through the browser:
 node auth.mjs login
 ```
 
-The harness resolves a token once per pytest worker. `node auth.mjs token` reuses a token with more than 30 seconds left or silently refreshes it. `MCP_TOKEN` from the environment or `.env` overrides the saved login. Refresh tokens are single-use: if a refresh request is interrupted, the saved login is lost and `token` asks you to run `login` again.
+The harness resolves a token immediately before every test, because access tokens expire after 300 seconds and a long run would otherwise reuse an expired one. `node auth.mjs token` reuses a token with more than 30 seconds left or silently refreshes it. `MCP_TOKEN` from the environment or `.env` overrides the saved login. Refresh tokens are single-use: if a refresh request is interrupted, the saved login is lost and `token` asks you to run `login` again.
 
 ## Run
 

@@ -69,8 +69,13 @@ def workspaces():
     return json.loads(completed.stdout)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def mcp():
+    """Resolved per test on purpose. MCP access tokens expire after 300
+    seconds, so a session-scoped fixture hands every test after the first few
+    minutes an expired token and the agents silently lose their ShiftCare
+    tools. `auth.mjs token` reuses a token with more than 30 seconds left and
+    refreshes it otherwise, so per-test resolution costs one subprocess call."""
     url = env_value("MCP_URL")
     if not url:
         pytest.exit("MCP_URL is required in the environment or evals/.env")

@@ -23,8 +23,13 @@ def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None,
     return captured[0]
 
 
-def test_mcp_fixture_is_session_scoped():
-    assert conftest.mcp._fixture_function_marker.scope == "session"
+def test_mcp_fixture_resolves_per_test():
+    """MCP tokens live 300 seconds. A session-scoped fixture resolves once per
+    xdist worker and then reuses an expired token for the rest of a long run,
+    which silently strips every agent's ShiftCare tools. Resolve per test:
+    `auth.mjs token` reuses a token with more than 30 seconds left, so the
+    cost is one subprocess call, not an OAuth round trip."""
+    assert conftest.mcp._fixture_function_marker.scope == "function"
 
 
 @pytest.mark.parametrize(("value", "expected"), [(None, 1), ("5", 5)])
