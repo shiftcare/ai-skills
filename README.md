@@ -45,6 +45,7 @@ in the skill frontmatter.
 | [`shiftcare-daily-rundown`](skills/shiftcare-daily-rundown/SKILL.md) | Read-only daily sweep of yesterday's and today's shifts, grouped by urgency with a next step per finding. |
 | [`shiftcare-create-shift`](skills/shiftcare-create-shift/SKILL.md) | Create a one-off or recurring shift from a plain-language request, with mandatory confirmation before the write. |
 | [`shiftcare-cancel-shift`](skills/shiftcare-cancel-shift/SKILL.md) | Cancel a shift, choosing correctly between charging the client and not paying the carer. |
+| [`shiftcare-create-note`](skills/shiftcare-create-note/SKILL.md) | Write a note about a client, routing between a client communication and a shift progress note, with mandatory confirmation before the write. |
 | [`shiftcare-complaints`](skills/shiftcare-complaints/SKILL.md) | Lodge and manage complaints through the ShiftCare MCP, including related-incident routing. |
 | [`shiftcare-action-items`](skills/shiftcare-action-items/SKILL.md) | Suggest and assign corrective action items off a complaint, or standalone, with confirmation before each write. |
 
