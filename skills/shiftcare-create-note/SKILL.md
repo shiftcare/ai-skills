@@ -4,7 +4,7 @@ description: Write a note about a ShiftCare client, choosing correctly between a
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Write a note about a ShiftCare client
@@ -259,7 +259,8 @@ Say so plainly and stop; do not improvise around any of these.
 - **Clear or resolve a Care Signal.** App only.
 - **Record an incident report.** A note categorised `incident` is a note, not an incident
   record, and it is not a substitute for the account's incident-response process. `list_incidents`
-  reads incidents; nothing over MCP writes one.
+  reads incidents; use the `shiftcare-create-incident` skill to draft one, and to write it where
+  the connection exposes an incident-create tool.
 - **Write a note for a carer to read before a shift.** That is the shift's description — use
   the `shiftcare-create-shift` skill.
 

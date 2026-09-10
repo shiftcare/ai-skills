@@ -4,7 +4,7 @@ description: Lodge, triage and progress complaints in ShiftCare through the comp
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # Manage ShiftCare complaints
@@ -56,7 +56,7 @@ Do not force an either/or choice when a complaint reveals an incident. Record an
 
 For an NDIS provider, escalate promptly to the designated incident/reportable-incident lead when the facts may involve a reportable incident. Registered providers have specific notification obligations; do not tell the user that a ShiftCare checkbox or ticket submits anything to the NDIS Commission. The organisation's current policy and the NDIS Commission's current guidance decide reportability and deadlines. Do not delay urgent safeguarding action to collect a complete narrative.
 
-Ask only for information needed to safely classify the matter. If it is unclear whether an incident occurred, preserve the person's words and escalate for review rather than minimising it as a complaint. The current MCP exposes `list_incidents` for reading; it does not expose an incident-create tool. So the honest instruction is: **record the incident in ShiftCare's Incidents, or the organisation's incident system — this skill can only read incidents, not create them.** Do not attempt to create an incident through another record type or the web interface.
+Ask only for information needed to safely classify the matter. If it is unclear whether an incident occurred, preserve the person's words and escalate for review rather than minimising it as a complaint. The current MCP exposes `list_incidents` for reading; it does not expose an incident-create tool. So the honest instruction is: **record the incident in ShiftCare's Incidents, or the organisation's incident system — this skill can only read incidents, not create them.** Use the `shiftcare-create-incident` skill to draft the incident record and check reportability; it writes only where the connection exposes an incident-create tool. Do not attempt to create an incident through another record type or the web interface.
 
 `list_incidents` is user-scoped the same way complaints are: private incidents and the account's data-access policy can exclude matching records, so an empty result does not prove there are no incidents. Say that when you report "no related incident found".
 
