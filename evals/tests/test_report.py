@@ -246,6 +246,24 @@ def test_surplus_results_on_one_arm_are_reported_not_dropped(tmp_path):
     assert "comparison unavailable" in visible
 
 
+def test_unscored_results_are_dropped_and_counted(tmp_path):
+    """When the judge raises, DeepEval records the test case as successful with a
+    metric carrying neither score nor success. Pooled, that is a phantom pass
+    that outlives the outage, so the report drops it and says so."""
+    run = invented_run()
+    phantom = json.loads(json.dumps(run["testCases"][0]))
+    phantom["metricsData"] = [{"name": "Response quality", "threshold": 0.7}]
+    run["testCases"].append(phantom)
+
+    _, _, page = write_report(tmp_path, run)
+    visible = visible_html(page)
+
+    assert "1 unscored results were dropped" in visible
+    assert f"{len(run['testCases']) - 1} results, 1 unscored dropped" in visible
+    assert "<strong>1</strong> paired comparisons" in visible
+    assert visible.count('class="result-detail"') == len(run["testCases"]) - 1
+
+
 def test_a_changed_skill_renders_as_a_labelled_before_and_after(tmp_path):
     """A mixed skill hash is a finding, not an error: it means the skill changed
     mid-accumulation, so the two must not be averaged together."""

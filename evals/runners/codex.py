@@ -119,6 +119,7 @@ def run(prompt, model, cwd, mcp):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        timeout=600,
     )
     duration_ms = round((time.monotonic() - started) * 1000)
     if completed.returncode:

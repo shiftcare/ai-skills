@@ -125,6 +125,17 @@ def raw_results_of(source):
     return first(run, "testCases", "test_cases", "testResults", default=[]) or []
 
 
+def unscored(raw):
+    """A metric with neither score nor success is an evaluation that never
+    happened: when the judge raises, DeepEval records the test case as
+    successful with a metric carrying no score, so the row would pool as a
+    phantom pass and inflate every later report."""
+    return any(
+        metric.get("score") is None and metric.get("success") is None
+        for metric in first(raw, "metricsData", "metrics_data", default=[]) or []
+    )
+
+
 def normalize(raw_results):
     results = []
     suite_ids = {}
@@ -232,7 +243,7 @@ def attribute_versions(results, provenance, current_skill, current_scenarios):
     current tree for its own suite, and if not, which tree it came from.
     """
     offset = 0
-    for _, count in provenance:
+    for _, count, _ in provenance:
         batch = results[offset:offset + count]
         offset += count
         hashes = {result["skill_hash"] for result in batch if result["variant"] == "With skill"}
@@ -774,13 +785,15 @@ def render_case_view(suites, skill_hash, scenario_hashes, provenance):
             f'<details id="suite-{suite["id"].lower()}" open><summary><span class="entity-id">{suite["id"]}</span> · {escape(suite["name"])}</summary>{"".join(cases)}</details>'
         )
     rows = "".join(
-        f"<tr><td>{escape(path.name)}</td><td>{count}</td></tr>" for path, count in provenance
+        f"<tr><td>{escape(path.name)}</td><td>{count}</td><td>{dropped}</td></tr>"
+        for path, count, dropped in provenance
     )
-    total = sum(count for _, count in provenance)
+    total = sum(count for _, count, _ in provenance)
+    dropped_total = sum(dropped for _, _, dropped in provenance)
     pooled = f"""
       <section id="provenance"><h2>Runs pooled into this report</h2>
-        <p>Every case's numbers below are drawn from {'this run' if len(provenance) == 1 else f'these {len(provenance)} runs combined'}, totalling {total} results. A case's sample count reflects however many of these runs happened to cover it, so a case exercised by a single narrow run rests on fewer observations than the totals here suggest.</p>
-        <div class="matrix-wrap"><table><thead><tr><th>Run file</th><th>Results</th></tr></thead><tbody>{rows}</tbody></table></div>
+        <p>Every case's numbers below are drawn from {'this run' if len(provenance) == 1 else f'these {len(provenance)} runs combined'}, totalling {total} results. A case's sample count reflects however many of these runs happened to cover it, so a case exercised by a single narrow run rests on fewer observations than the totals here suggest.{f' {dropped_total} unscored results were dropped: their judge raised instead of scoring, so they are not evaluations.' if dropped_total else ''}</p>
+        <div class="matrix-wrap"><table><thead><tr><th>Run file</th><th>Results</th><th>Unscored, dropped</th></tr></thead><tbody>{rows}</tbody></table></div>
       </section>"""
     return f"""
     <section id="case-view" class="report-grid" hidden>
@@ -841,8 +854,9 @@ def render(sources, saved):
     provenance = []
     for path, source in sources:
         raws = raw_results_of(source)
-        raw_results.extend(raws)
-        provenance.append((path, len(raws)))
+        scored = [raw for raw in raws if not unscored(raw)]
+        raw_results.extend(scored)
+        provenance.append((path, len(scored), len(raws) - len(scored)))
     results, suites = normalize(raw_results)
     skill_hash = directory_hash(SKILL_DIR)
     scenario_hashes = {
@@ -857,8 +871,8 @@ def render(sources, saved):
     # even the newest one put 40.7MB of a 64.9MB page into a script tag that only
     # a download button read. The report names the paths instead.
     sources_list = "".join(
-        f"<li><code>{escape(str(path))}</code> — {count} results</li>"
-        for path, count in provenance
+        f"<li><code>{escape(str(path))}</code> — {count} results{f', {dropped} unscored dropped' if dropped else ''}</li>"
+        for path, count, dropped in provenance
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>MCP evaluation report</title><style>{STYLE}</style></head>

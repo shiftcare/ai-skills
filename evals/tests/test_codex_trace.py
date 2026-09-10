@@ -81,3 +81,23 @@ def test_codex_restricts_mcp_tools_to_the_shared_allowlist(monkeypatch, tmp_path
 
     assert json_module.loads(setting.split("=", 1)[1]) == allowlist
     assert "check_skill_compatibility" in allowlist
+
+
+def test_codex_run_times_out_like_the_claude_runner(monkeypatch, tmp_path):
+    """A Codex process stalled on a rate limit otherwise blocks its xdist worker
+    for the rest of the run; the Claude runner already gives up after 600s."""
+    import subprocess as subprocess_module
+
+    from runners import codex
+
+    (tmp_path / "home").mkdir()
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess_module.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(codex.subprocess, "run", fake_run)
+    codex.run("Invented prompt", "invented-model", str(tmp_path / "with-skill"), None)
+
+    assert captured["timeout"] == 600

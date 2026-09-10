@@ -85,3 +85,52 @@ def mcp():
     if not token:
         pytest.exit("No MCP token available. Run: cd evals && node auth.mjs login")
     return McpConfig(url=url, token=token)
+
+
+INFRASTRUCTURE_ERRORS_BEFORE_EXIT = 3
+consecutive_infrastructure_errors = 0
+
+
+def infrastructure_error(excinfo):
+    """A failed assertion is a result. Anything else a scenario raises (the agent
+    runner exiting non-zero, a subprocess timeout, the judge's SDK rejecting a
+    call) means the evaluation never happened."""
+    return (
+        excinfo is not None
+        and excinfo.errisinstance(Exception)
+        and not excinfo.errisinstance(AssertionError)
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Flag scenario errors on the worker, where the exception is still in hand.
+    Only scenarios (anything taking the `model` fixture) count: a broken unit
+    test under tests/ is not an outage."""
+    report = (yield).get_result()
+    if call.when == "call" and "model" in item.fixturenames:
+        report.infrastructure_error = infrastructure_error(call.excinfo)
+
+
+def pytest_runtest_logreport(report):
+    """End the session after a run of infrastructure errors.
+
+    A quota outage fails every remaining scenario, each spawning an agent and up
+    to a dozen judge subprocesses that fail in turn. `--maxfail` is the wrong
+    tool because legitimate metric failures are common, so only consecutive
+    infrastructure errors count and any real result resets the run. Under xdist
+    this hook runs in the controller; `pytest.exit` from the worker-side hook
+    trips an xdist internal error instead of a clean stop."""
+    global consecutive_infrastructure_errors
+    if report.when != "call":
+        return
+    if getattr(report, "infrastructure_error", False):
+        consecutive_infrastructure_errors += 1
+    else:
+        consecutive_infrastructure_errors = 0
+    if consecutive_infrastructure_errors >= INFRASTRUCTURE_ERRORS_BEFORE_EXIT:
+        pytest.exit(
+            f"{consecutive_infrastructure_errors} consecutive infrastructure errors; "
+            f"last: {report.longrepr.reprcrash.message}",
+            returncode=3,
+        )
