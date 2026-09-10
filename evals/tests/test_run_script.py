@@ -82,6 +82,7 @@ def eval_copy(tmp_path):
     (root / ".deepeval").mkdir()
     (root / ".deepeval" / ".latest_run_full.json").write_text("{}")
     os.utime(root / ".deepeval" / ".latest_run_full.json", (1, 1))
+    # run.sh archives to ../runs, a sibling of the harness directory.
     return root
 
 
@@ -91,7 +92,7 @@ def test_run_script_generates_report_after_a_passing_run(tmp_path, eval_copy):
     _run(tmp_path, script=eval_copy / "run.sh")
 
     assert "report.py" in log.read_text()
-    assert len(list((eval_copy / "runs").glob("*.json"))) == 1
+    assert len(list((eval_copy.parent / "runs").glob("*.json"))) == 1
 
 
 def test_run_script_generates_report_even_when_tests_fail(tmp_path, eval_copy):
@@ -102,7 +103,7 @@ def test_run_script_generates_report_even_when_tests_fail(tmp_path, eval_copy):
     _run(tmp_path, expect_code=1, script=eval_copy / "run.sh")
 
     assert "report.py" in log.read_text()
-    assert len(list((eval_copy / "runs").glob("*.json"))) == 1
+    assert len(list((eval_copy.parent / "runs").glob("*.json"))) == 1
 
 
 def test_run_script_does_not_rearchive_stale_results(tmp_path, eval_copy):
@@ -113,4 +114,4 @@ def test_run_script_does_not_rearchive_stale_results(tmp_path, eval_copy):
     completed = _run(tmp_path, script=eval_copy / "run.sh")
 
     assert "no new results written" in completed.stderr
-    assert list((eval_copy / "runs").glob("*.json")) == []
+    assert list((eval_copy.parent / "runs").glob("*.json")) == []

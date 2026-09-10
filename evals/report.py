@@ -11,9 +11,12 @@ import statistics
 
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
-REPORTS_DIR = "reports"
-RUNS_DIR = "runs"
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+# Anchored to the repository root, not the working directory: reports are output a
+# person opens and runs/ is the accumulating dataset, so neither is harness
+# internals, and a relative path would silently depend on where this was invoked.
+REPORTS_DIR = PROJECT_ROOT / "reports"
+RUNS_DIR = PROJECT_ROOT / "runs"
 SKILL_DIR = PROJECT_ROOT / "skills" / "shiftcare-mcp"
 SCENARIO_FILES = {
     "Connection verification": PROJECT_ROOT / "evals" / "test_connection.py",
@@ -737,7 +740,7 @@ def input_paths(inputs):
     """
     if inputs:
         return [pathlib.Path(item) for item in inputs]
-    archived = sorted(pathlib.Path(RUNS_DIR).glob("*.json"))
+    archived = sorted(RUNS_DIR.glob("*.json"))
     return archived or [pathlib.Path(DEFAULT_INPUT)]
 
 
@@ -754,7 +757,7 @@ def main(argv=None):
     output_path = (
         pathlib.Path(args.output)
         if args.output
-        else pathlib.Path(REPORTS_DIR) / f"{saved.strftime('%Y-%m-%d-%H%M%S')}.html"
+        else REPORTS_DIR / f"{saved.strftime('%Y-%m-%d-%H%M%S')}.html"
     )
     page = render(sources, saved)
     output_path.parent.mkdir(parents=True, exist_ok=True)

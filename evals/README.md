@@ -77,10 +77,12 @@ uv run python report.py
 uv run python report.py .deepeval/.latest_test_run.json -o somewhere/else.html
 ```
 
-Reports are written to `reports/<YYYY-MM-DD-HHMMSS>.html`, named from the source result file's modification time so each run keeps its own file instead of overwriting the last one. `-o` overrides the path. The `reports/` directory is committed but its contents are not.
+Reports are written to `reports/<YYYY-MM-DD-HHMMSS>.html` at the repository root, named from the newest pooled result file's modification time so each run keeps its own file instead of overwriting the last one. `-o` overrides the path. The `reports/` directory is committed but its contents are not.
 
-The HTML remains local and contains the full prompts, tool outputs, and judge reasons. “Results saved” uses the source result file's modification time, and Download JSON returns the complete source data.
+With no arguments, `report.py` pools every archived run in `runs/` at the repository root, falling back to DeepEval's own `.deepeval/.latest_run_full.json` when nothing has been archived. Pooling is what makes a narrow run useful: `./run.sh -k invoice` archives its own results and the next report adds them to that case's samples rather than replacing the matrix. The report opens with a table naming each pooled file and its result count, and each case reports its own sample count, so a case covered by one narrow run is not mistaken for one covered by five full matrices.
+
+The HTML remains local and contains the full prompts, tool outputs, and judge reasons. “Results saved” uses the newest pooled file's modification time, and “Download latest run JSON” returns that file's source data — not the whole pool, whose files are already in `runs/`.
 
 ## Privacy
 
-Evaluation results and judge reasons contain real account data. Keep `.deepeval/` and `reports/` local. Never run `deepeval view`, upload results, or share result files. Credentials remain in the ignored `.auth/` or `.env` files and must never be committed.
+Evaluation results and judge reasons contain real account data. Keep `.deepeval/`, and the repository-root `reports/` and `runs/`, local. Both carry a self-ignoring `.gitignore`; moving them nearer the repository root makes an accidental `git add` easier, so check `git status` is clean after generating a report. Never run `deepeval view`, upload results, or share result files. Credentials remain in the ignored `.auth/` or `.env` files and must never be committed.

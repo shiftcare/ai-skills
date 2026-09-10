@@ -90,6 +90,19 @@ def invented_run():
     return {"testCases": [with_skill, no_skill, unpaired]}
 
 
+@pytest.fixture
+def report_dirs(tmp_path, monkeypatch):
+    """Redirect the repository-root reports/ and runs/ into a tmpdir.
+
+    Both are absolute now so a report lands in the same place wherever it is run
+    from, which means tests have to patch the constants rather than chdir.
+    """
+    reports, runs = tmp_path / "reports", tmp_path / "runs"
+    monkeypatch.setattr(report, "REPORTS_DIR", reports)
+    monkeypatch.setattr(report, "RUNS_DIR", runs)
+    return reports, runs
+
+
 def write_report(tmp_path, run):
     source = tmp_path / "run.json"
     output = tmp_path / "report.html"
@@ -401,27 +414,26 @@ def test_report_is_private_before_any_content_is_written(tmp_path, monkeypatch, 
     assert len(writes) == 1
 
 
-def test_default_output_is_a_named_run_under_reports(tmp_path, monkeypatch):
+def test_default_output_is_a_named_run_under_reports(tmp_path, report_dirs):
+    reports, _ = report_dirs
     source = tmp_path / "run.json"
     source.write_text(json.dumps({"testCases": []}))
     os.utime(source, (1757000000, 1757000000))
-    monkeypatch.chdir(tmp_path)
 
     report.main([str(source)])
 
     expected = datetime.datetime.fromtimestamp(1757000000).astimezone().strftime("%Y-%m-%d-%H%M%S")
-    written = list((tmp_path / "reports").glob("*.html"))
-    assert [path.name for path in written] == [f"{expected}.html"]
+    assert [path.name for path in reports.glob("*.html")] == [f"{expected}.html"]
 
 
-def test_report_writes_to_the_named_run_path(tmp_path, monkeypatch):
+def test_report_writes_to_the_named_run_path(tmp_path, report_dirs):
+    reports, _ = report_dirs
     source = tmp_path / "run.json"
     source.write_text(json.dumps({"testCases": []}))
-    monkeypatch.chdir(tmp_path)
 
     report.main([str(source)])
 
-    written = list((tmp_path / "reports").glob("*.html"))
+    written = list(reports.glob("*.html"))
     assert len(written) == 1
     assert written[0].stat().st_mode & 0o777 == 0o600
 
@@ -501,45 +513,47 @@ def test_all_tables_contain_pathological_reasons_at_narrow_width(tmp_path):
     assert visible.count("<table") == visible.count('<div class="matrix-wrap"><table')
 
 
-def test_report_pools_every_archived_run_by_default(tmp_path, monkeypatch):
+def test_report_pools_every_archived_run_by_default(tmp_path, report_dirs):
     # The point of pooling: a narrow run adds samples to a case instead of
     # replacing the matrix, so a case's n grows as runs accumulate.
-    runs = tmp_path / "runs"
+    reports, runs = report_dirs
     runs.mkdir()
     (runs / "2026-01-01-000000.json").write_text(json.dumps(invented_run()))
     (runs / "2026-01-02-000000.json").write_text(json.dumps(invented_run()))
-    monkeypatch.chdir(tmp_path)
 
     report.main([])
 
-    page = next((tmp_path / "reports").glob("*.html")).read_text()
+    page = next(reports.glob("*.html")).read_text()
     visible = visible_html(page)
     assert "these 2 runs combined, totalling 6 results" in visible
     assert "2026-01-01-000000.json" in visible
     assert "2026-01-02-000000.json" in visible
 
 
-def test_report_falls_back_to_the_deepeval_run_when_nothing_is_archived(tmp_path, monkeypatch):
+def test_report_falls_back_to_the_deepeval_run_when_nothing_is_archived(
+    tmp_path, report_dirs, monkeypatch
+):
+    reports, _ = report_dirs
     source = tmp_path / report.DEFAULT_INPUT
     source.parent.mkdir(parents=True)
     source.write_text(json.dumps(invented_run()))
+    # DEFAULT_INPUT stays relative: it is DeepEval's own file inside evals/.
     monkeypatch.chdir(tmp_path)
 
     report.main([])
 
-    assert len(list((tmp_path / "reports").glob("*.html"))) == 1
+    assert len(list(reports.glob("*.html"))) == 1
 
 
-def test_pooled_results_keep_distinct_ids_across_files(tmp_path, monkeypatch):
+def test_pooled_results_keep_distinct_ids_across_files(tmp_path, report_dirs):
     # normalize() numbers results with a running counter, so pooling has to run
     # it once over the concatenated results rather than once per file.
-    runs = tmp_path / "runs"
+    reports, runs = report_dirs
     runs.mkdir()
     (runs / "a.json").write_text(json.dumps(invented_run()))
     (runs / "b.json").write_text(json.dumps(invented_run()))
-    monkeypatch.chdir(tmp_path)
 
     report.main([])
 
-    page = next((tmp_path / "reports").glob("*.html")).read_text()
+    page = next(reports.glob("*.html")).read_text()
     assert 'id="result-r6"' in visible_html(page).lower() or "R6" in visible_html(page)
