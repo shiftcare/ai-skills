@@ -1,6 +1,6 @@
 ---
 name: shiftcare-create-incident
-description: Turn a report of something that went wrong during care into a ShiftCare incident record — a fall, a medication error, an injury, aggression, a missing client, alleged abuse or neglect, a restrictive practice, a near miss. Use for "raise an incident for Mary", "Tom says the client fell in the shower this morning, get it in the system", "is this a reportable incident?", "write up Tuesday's fall as an incident". Asks which framework applies (NDIS disability supports, Australian aged care or home care under SIRS, or the organisation's own policy) and flags when the facts may be a reportable incident with a regulator deadline. Drafts the record in the shape ShiftCare's incident form expects, checks for an existing incident, then writes once on confirmation — or, when the connection exposes no incident-create tool (the common case today), hands over a ready-to-enter record and stops. Never files a note or complaint in place of an incident, never notifies a regulator. Writes data; never without confirmation.
+description: Turn a report of something that went wrong during care into a ShiftCare incident record — a fall, a medication error, an injury, aggression, a missing client, alleged abuse or neglect, a restrictive practice, a near miss. Use for "raise an incident for Mary", "Tom says the client fell in the shower, get it in the system", "is this a reportable incident?", "write up Tuesday's fall as an incident". Asks which framework applies (NDIS, Australian aged care or home care under SIRS, or the organisation's own policy) and flags when the facts may be a reportable incident with a regulator deadline. Drafts the record in the shape ShiftCare's incident form expects, checks for an existing incident, writes once on confirmation — or, when the connection has no incident-create tool (the common case today), hands over a ready-to-enter record — then offers corrective action items against it. Never files a note or complaint in place of an incident, never notifies a regulator. Writes data; never without confirmation.
 license: Apache-2.0
 metadata:
   author: shiftcare
@@ -229,15 +229,36 @@ Create it?
   "capture it for now" — see the first section. If the user asks for a note as well, that is
   the `shiftcare-create-note` skill's job and a separate decision.
 
-## Step 7 — Offer the follow-up work
+## Step 7 — Ask about corrective actions, with a shortlist
 
-An incident is a record, not a response. Once the incident exists — created here, or entered by
-the user, who can give you its `id` or let you find it with `list_incidents` — ask whether
-they want corrective action items raised against it. If yes, use the `shiftcare-action-items`
-skill with the incident's numeric `id` as `parent_id` and `parent_type: Incident`. It proposes
-a shortlist, resolves each owner and confirms each item separately.
+An incident is a record, not a response. Once the record is confirmed, always ask whether the
+user wants corrective action items raised against it, and make the question concrete: the
+**follow-up called for** you wrote under Actions Taken is the shortlist. Propose those items,
+two to four, each one assignable piece of work — "confirm whether a medical review is needed",
+"call the daughter today", "review bathroom slip risk with the team" — and let the user cut or
+add before anything is created.
 
-Ask; do not assume. Do not list actions as though they exist when nothing was created.
+```text
+The incident is confirmed. Do you want corrective actions raised against it?
+  1. Confirm whether a medical review is needed — today
+  2. Notify the family (call his daughter) — today
+  3. Review bathroom slip risk with the team — this week
+Pick the ones you want, change any, or say no.
+```
+
+- **The incident needs an `id` first.** Created here → the `id` from the create response.
+  Entered by the user in ShiftCare → ask them for the id, or find it with `list_incidents`
+  using `client_ids` and today's `created_at_from_in_account_time_zone`, with the name as
+  `search_text`, and show the match for them to confirm. No id, no action items.
+- **They want them** → use the `shiftcare-action-items` skill with the incident's numeric `id`
+  as `parent_id` and `parent_type: Incident`, passing your shortlist as its starting point. It
+  resolves each owner through `list_staff`, scales the list to the incident's priority, and
+  confirms each item separately before creating it. Check `create_action_item` is exposed on
+  this connection before promising it; if it is not, say so and stop.
+- **They decline** → say so once and stop. Do not describe the follow-up as tracked when nothing
+  was created, and do not list the actions as though they exist.
+
+Ask; do not assume. Some incidents are closed by the record alone.
 
 ## What this skill will not do
 
