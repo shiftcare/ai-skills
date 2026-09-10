@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import identity
 import report
 from report import main, normalize
 
@@ -534,6 +535,74 @@ def test_current_tree_hashes_are_stable_and_include_all_skill_files(tmp_path):
 
     assert report.directory_hash(skill) == digest.hexdigest()[:12]
     assert report.cases_hash(scenario) == hashlib.sha256(canonical).hexdigest()[:12]
+
+
+def test_discovered_suite_feeds_current_tree_hashes(tmp_path, monkeypatch):
+    scenario = tmp_path / "test_invented.py"
+    scenario.write_text(
+        'SUITE = "Invented suite"\n'
+        'SKILL = "shiftcare-mcp"\n'
+        'CASES = [{"name": "invented case", "ask": "invented", '
+        '"expected_tools": ["whoami"], "quality": "invented"}]\n'
+    )
+    discovered = identity.suites(tmp_path)
+    assert discovered == {
+        "Invented suite": {"file": scenario, "skill": "shiftcare-mcp"}
+    }
+    scenario_hash = identity.cases_hash(scenario)
+    skill_hash = identity.skill_hash("shiftcare-mcp")
+    run = invented_run()
+    for result in run["testCases"]:
+        result["metadata"].update(
+            {
+                "suite": "Invented suite",
+                "scenarioHash": scenario_hash,
+                "skillHash": skill_hash
+                if result["metadata"]["skillVariant"] == "With skill"
+                else identity.NO_SKILL,
+            }
+        )
+    monkeypatch.setattr(report, "discover_suites", lambda: discovered)
+
+    _, _, page = write_report(tmp_path, run)
+
+    detail = visible_html(page).split('id="case-panel-c1"', 1)[1]
+    assert "Current working tree" in detail
+    assert "shiftcare-mcp" in detail
+    assert f"skill_hash={skill_hash}" in detail
+    assert f"scenario_hash={scenario_hash}" in detail
+
+
+def test_no_skill_fallback_uses_each_suites_current_skill_hash():
+    results = [
+        {
+            "suite": "Invented alpha",
+            "variant": "No skill",
+            "skill_hash": identity.NO_SKILL,
+            "scenario_hash": "scenario-alpha",
+        },
+        {
+            "suite": "Invented beta",
+            "variant": "No skill",
+            "skill_hash": identity.NO_SKILL,
+            "scenario_hash": "scenario-beta",
+        },
+    ]
+    current = {
+        "Invented alpha": ("scenario-alpha", "skill-alpha"),
+        "Invented beta": ("scenario-beta", "skill-beta"),
+    }
+
+    report.attribute_versions(results, [(Path("invented.json"), 2, 0)], current)
+
+    assert [result["skill_hash"] for result in results] == [
+        "skill-alpha",
+        "skill-beta",
+    ]
+    assert [result["version"] for result in results] == [
+        report.CURRENT_VERSION,
+        report.CURRENT_VERSION,
+    ]
 
 
 def test_report_rolls_up_matrix_and_suite_without_cross_case_pair_collisions(tmp_path):

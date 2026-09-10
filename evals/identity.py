@@ -19,6 +19,28 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 NO_SKILL = "none"
 
 
+def suites(directory=Path(__file__).parent):
+    """Discover scenario suite names and skills without importing their modules."""
+    discovered = {}
+    for path in sorted(Path(directory).glob("test_*.py")):
+        constants = {}
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for statement in tree.body:
+            if not isinstance(statement, ast.Assign):
+                continue
+            for target in statement.targets:
+                if isinstance(target, ast.Name) and target.id in {"SUITE", "SKILL"}:
+                    value = ast.literal_eval(statement.value)
+                    if isinstance(value, str):
+                        constants[target.id] = value
+        if constants.keys() >= {"SUITE", "SKILL"}:
+            suite = constants["SUITE"]
+            if suite in discovered:
+                raise ValueError(f"Duplicate SUITE {suite!r}: {path}")
+            discovered[suite] = {"file": path, "skill": constants["SKILL"]}
+    return discovered
+
+
 def directory_hash(directory):
     """Hash a directory's file contents, sorted by relative path.
 

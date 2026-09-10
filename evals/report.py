@@ -7,7 +7,7 @@ import pathlib
 import random
 import statistics
 
-from identity import NO_SKILL, cases_hash, directory_hash
+from identity import NO_SKILL, cases_hash, directory_hash, skill_hash, suites as discover_suites
 
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
@@ -17,11 +17,6 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 # internals, and a relative path would silently depend on where this was invoked.
 REPORTS_DIR = PROJECT_ROOT / "reports"
 RUNS_DIR = PROJECT_ROOT / "runs"
-SKILL_DIR = PROJECT_ROOT / "skills" / "shiftcare-mcp"
-SCENARIO_FILES = {
-    "Connection verification": PROJECT_ROOT / "evals" / "test_connection.py",
-    "Read-only tasks": PROJECT_ROOT / "evals" / "test_tasks.py",
-}
 # The statistical gate is 5% over 80 with-skill samples; at 20 repeats, one
 # observation changes a case/arm rate by no more than five percentage points.
 MIN_CASE_ARM_SAMPLES = 20
@@ -44,7 +39,7 @@ GLOSSARY = {
     "Task Completion": "A judge score comparing the user's task with the factual outcome extracted from the execution trace.",
     "Step Efficiency": "A judge score for completing the task with the fewest, simplest, and most direct actions in the execution trace.",
     "Argument Correctness": "The share of evaluated tool calls whose non-empty input parameters correctly and relevantly address the user's request; skill-loading calls are excluded.",
-    "Skill Activation": "Whether the trace loaded the ShiftCare skill when the scenario expected it to, or avoided loading it when it did not.",
+    "Skill Activation": "Whether the trace loaded the suite's skill when the scenario expected it to, or avoided loading it when it did not.",
     "Connection Protocol": "Whether the first ShiftCare data call was whoami and at least one read-only call followed it, ignoring skill-loading and compatibility-check calls.",
     "Shift Date": "Whether list_shifts was called with the date expected by the scenario.",
     "Input tokens": "Input tokens reported by the agent run.",
@@ -230,13 +225,13 @@ def pairs_for(results):
 CURRENT_VERSION = "current working tree"
 
 
-def attribute_versions(results, provenance, current_skill, current_scenarios):
+def attribute_versions(results, provenance, current):
     """Stamp every result with the version it was collected under.
 
-    The no-skill arm has no skill to hash, so it borrows the with-skill hash from
-    the same run file: a file comes from one working tree, so that is the skill
-    it served as the control for. Without this the one control list is reused
-    against every skill version and n never resets after an edit.
+    The no-skill arm has no skill to hash, so it borrows the with-skill hash for
+    its suite from the same run file. If a narrow run has no with-skill result,
+    it uses that suite's current skill hash. Without this the control list is
+    reused against every skill version and n never resets after an edit.
 
     A version is a label rather than a raw hash pair because the scenario hash
     differs per suite by design; what matters is whether a result matches the
@@ -246,14 +241,22 @@ def attribute_versions(results, provenance, current_skill, current_scenarios):
     for _, count, _ in provenance:
         batch = results[offset:offset + count]
         offset += count
-        hashes = {result["skill_hash"] for result in batch if result["variant"] == "With skill"}
-        paired = hashes.pop() if len(hashes) == 1 else current_skill
+        hashes = {}
+        for result in batch:
+            if result["variant"] == "With skill":
+                hashes.setdefault(result["suite"], set()).add(result["skill_hash"])
         for result in batch:
             if result["variant"] == "No skill":
-                result["skill_hash"] = paired
+                candidates = hashes.get(result["suite"], set())
+                result["skill_hash"] = (
+                    next(iter(candidates))
+                    if len(candidates) == 1
+                    else current.get(result["suite"], (None, NO_SKILL))[1]
+                )
     for result in results:
         skill, scenario = result["skill_hash"], result["scenario_hash"]
-        if skill == current_skill and scenario == current_scenarios.get(result["suite"]):
+        current_scenario, current_skill = current.get(result["suite"], (None, None))
+        if skill == current_skill and scenario == current_scenario:
             result["version"] = CURRENT_VERSION
         elif skill == "legacy":
             result["version"] = "predates content hashes; comparability unverified"
@@ -703,7 +706,7 @@ def render_result(result):
       </details>"""
 
 
-def render_case(case, suite, skill_hash, scenario_hash):
+def render_case(case, suite, skill, skill_hash, scenario_hash):
     results = case["results"]
     pairs = pairs_for(results)
     specs = measure_specs(results)
@@ -757,7 +760,7 @@ def render_case(case, suite, skill_hash, scenario_hash):
         <span class="entity-label"><a class="entity-id" href="#case-{case['id'].lower()}">{case['id']}</a> · Case</span><h1>{escape(case['name'])}</h1>
         <section><h2>Case instructions</h2><div class="instructions">{escape(results[0]['input'] if results else 'Unavailable')}</div></section>
         <div class="facts"><span>{escape(comparison_copy)}</span><span>{len(results)} scenario results</span><span>With skill vs No skill</span></div>
-        <section class="provenance"><h2>Samples and current-tree provenance</h2><div class="facts">{sample_summary}</div>{warning}<p>Current working tree: <code>skill_hash={escape(skill_hash)}</code> · <code>scenario_hash={escape(scenario_hash or 'unavailable')}</code></p><p class="caveat">Results collected under other hashes are labelled with the version they came from and are never pooled with the current tree's sample. Results that predate content hashes cannot be verified against them.</p></section>
+        <section class="provenance"><h2>Samples and current-tree provenance</h2><div class="facts">{sample_summary}</div>{warning}<p>Current working tree for <code>{escape(skill or 'unavailable')}</code>: <code>skill_hash={escape(skill_hash or 'unavailable')}</code> · <code>scenario_hash={escape(scenario_hash or 'unavailable')}</code></p><p class="caveat">Results collected under other hashes are labelled with the version they came from and are never pooled with the current tree's sample. Results that predate content hashes cannot be verified against them.</p></section>
         <h2>Aggregate impact</h2><div class="impact-grid">{aggregate_impact(results)}</div>
         <h2>Quality</h2><p>Positive effects mean the skill improved the measure. Aggregate values pair each model and repeat before summarizing.</p>{aggregate_table(results, quality_specs)}
         <h2>Overhead</h2><p>Positive effects mean the skill reduced operational overhead.</p>{aggregate_table(results, overhead_specs)}
@@ -767,10 +770,12 @@ def render_case(case, suite, skill_hash, scenario_hash):
       </article>"""
 
 
-def render_case_view(suites, skill_hash, scenario_hashes, provenance):
+def render_case_view(suites, discovered, current, provenance):
     navigation = []
     panels = []
     for suite in suites:
+        spec = discovered.get(suite["name"], {})
+        scenario_hash, skill_hash = current.get(suite["name"], (None, None))
         cases = []
         for case in suite["cases"]:
             links = "".join(
@@ -780,7 +785,9 @@ def render_case_view(suites, skill_hash, scenario_hashes, provenance):
             cases.append(
                 f'<details id="case-{case["id"].lower()}" open><summary><button type="button" data-case="{case["id"]}"><span class="entity-id">{case["id"]}</span> · {escape(case["name"])}</button></summary>{links}</details>'
             )
-            panels.append(render_case(case, suite, skill_hash, scenario_hashes.get(suite["name"])))
+            panels.append(
+                render_case(case, suite, spec.get("skill"), skill_hash, scenario_hash)
+            )
         navigation.append(
             f'<details id="suite-{suite["id"].lower()}" open><summary><span class="entity-id">{suite["id"]}</span> · {escape(suite["name"])}</summary>{"".join(cases)}</details>'
         )
@@ -858,13 +865,12 @@ def render(sources, saved):
         raw_results.extend(scored)
         provenance.append((path, len(scored), len(raws) - len(scored)))
     results, suites = normalize(raw_results)
-    skill_hash = directory_hash(SKILL_DIR)
-    scenario_hashes = {
-        suite["name"]: cases_hash(SCENARIO_FILES[suite["name"]])
-        for suite in suites
-        if suite["name"] in SCENARIO_FILES
+    discovered = discover_suites()
+    current = {
+        suite: (cases_hash(spec["file"]), skill_hash(spec["skill"]))
+        for suite, spec in discovered.items()
     }
-    attribute_versions(results, provenance, skill_hash, scenario_hashes)
+    attribute_versions(results, provenance, current)
     saved_iso = saved.isoformat(timespec="seconds")
     saved_text = saved.strftime("%d %b %Y, %H:%M:%S %Z")
     # Nothing is embedded: the pooled runs are already files on disk, and inlining
@@ -877,7 +883,7 @@ def render(sources, saved):
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>MCP evaluation report</title><style>{STYLE}</style></head>
 <body><header class="report-header"><strong>MCP evaluation report</strong><span class="saved">Results saved <time datetime="{saved_iso}">{escape(saved_text)}</time></span><nav class="view-tabs" aria-label="Report views"><button id="overview-tab" class="active" type="button">Overview</button><button id="comparisons-tab" type="button">Case comparisons</button><button id="results-tab" type="button">All results</button><button id="case-tab" type="button">Case detail</button></nav></header>
-{render_overview(suites, results, sources_list)}{render_comparisons(suites, results)}{render_all_results(suites, results, sources_list)}{render_case_view(suites, skill_hash, scenario_hashes, provenance)}
+{render_overview(suites, results, sources_list)}{render_comparisons(suites, results)}{render_all_results(suites, results, sources_list)}{render_case_view(suites, discovered, current, provenance)}
 <p class="privacy">This report contains local evaluation inputs, tool outputs, and judge reasons. Keep it private and do not upload it.</p>
 <script>{SCRIPT}</script></body></html>"""
 

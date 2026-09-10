@@ -1,4 +1,4 @@
-import { mkdir, readlink, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readlink, symlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,26 +20,33 @@ async function ensureSymlink(source, destination, type) {
 
 export async function ensureWorkspaces(root = path.resolve(evalsDir, '..')) {
   const workspaceRoot = path.join(root, 'evals', '.workspace');
-  const withSkill = path.join(workspaceRoot, 'with-skill');
   const noSkill = path.join(workspaceRoot, 'no-skill');
   const home = path.join(workspaceRoot, 'home');
-  const skill = path.join(root, 'skills', 'shiftcare-mcp');
+  const skillNames = (await readdir(path.join(root, 'skills'), { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  const skills = {};
 
   await mkdir(noSkill, { recursive: true });
   // Codex reads AGENTS.md from the working directory; this mirrors the Claude runner's system prompt.
-  for (const dir of [withSkill, noSkill]) {
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, 'AGENTS.md'), `${AGENT_INSTRUCTIONS}\n`);
+  await writeFile(path.join(noSkill, 'AGENTS.md'), `${AGENT_INSTRUCTIONS}\n`);
+  for (const skillName of skillNames) {
+    const skill = path.join(root, 'skills', skillName);
+    const workspace = path.join(workspaceRoot, `with-${skillName}`);
+    skills[skillName] = workspace;
+    await mkdir(workspace, { recursive: true });
+    await writeFile(path.join(workspace, 'AGENTS.md'), `${AGENT_INSTRUCTIONS}\n`);
+    await ensureSymlink(skill, path.join(workspace, '.claude', 'skills', skillName), 'dir');
+    await ensureSymlink(skill, path.join(workspace, '.agents', 'skills', skillName), 'dir');
   }
-  await ensureSymlink(skill, path.join(withSkill, '.claude', 'skills', 'shiftcare-mcp'), 'dir');
-  await ensureSymlink(skill, path.join(withSkill, '.agents', 'skills', 'shiftcare-mcp'), 'dir');
   await ensureSymlink(
     path.join(homedir(), '.codex', 'auth.json'),
     path.join(home, '.codex', 'auth.json'),
     'file',
   );
 
-  return { 'with-skill': withSkill, 'no-skill': noSkill, home };
+  return { 'no-skill': noSkill, home, skills };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

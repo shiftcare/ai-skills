@@ -1,14 +1,14 @@
+from datetime import date, timedelta
+
 from deepeval import assert_test
 from deepeval.metrics import GEval, ToolCorrectnessMetric
 from deepeval.test_case import LLMTestCase, SingleTurnParams, ToolCall
-import pytest
-
-from pathlib import Path
 
 from identity import cases_hash, skill_hash
 from judge import ClaudeJudge
 from metrics import (
-    ConnectionProtocol,
+    ShiftDate,
+    SkillActivation,
     ToolResultIntegrity,
     agent_trace,
     agentic_metrics,
@@ -17,42 +17,14 @@ from metrics import (
 from runners import run_agent
 
 
-SUITE = "Connection verification"
-SKILL = "shiftcare-mcp"
-CASES = [
-    {
-        "name": "connect and verify",
-        "ask": "Connect me to ShiftCare and confirm it works.",
-        "expected_tools": ["whoami"],
-        "quality": (
-            "Names the account; states read-only versus write access based on role and "
-            "mcp_writes_enabled; makes no write attempts; uses plain language."
-        ),
-        "whoami_first": True,
-    },
-    {
-        "name": "account and write access",
-        "ask": "Which ShiftCare account am I connected to, and can I make changes?",
-        "expected_tools": ["whoami"],
-        "quality": (
-            "Matches the whoami output for account, role, and mcp_writes_enabled; if "
-            "mcp_available is false, explains why instead of calling other tools."
-        ),
-    },
-    {
-        "name": "account identity uses whoami without connection verification",
-        "ask": "What ShiftCare account am I signed into?",
-        "expected_tools": ["whoami"],
-        "quality": "Names the signed-in account from whoami and does not invent access details.",
-    },
-]
-
-
-@pytest.mark.parametrize("skill", [SKILL, None], ids=["with-skill", "no-skill"])
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_connection(case, skill, model, mcp, workspaces):
-    cwd = workspaces["skills"][skill] if skill else workspaces["no-skill"]
-    result = run_agent(case["ask"], model, cwd, skill, mcp)
+def evaluate(case, skill, model, mcp, workspaces, suite, scenario_file):
+    result = run_agent(
+        case["ask"],
+        model,
+        workspaces["skills"][skill] if skill else workspaces["no-skill"],
+        skill=skill,
+        mcp=mcp,
+    )
     tool_calls = result["toolCalls"]
 
     test_case = LLMTestCase(
@@ -62,11 +34,11 @@ def test_connection(case, skill, model, mcp, workspaces):
         tools_called=to_deepeval_tool_calls(tool_calls),
         expected_tools=[ToolCall(name=name) for name in case["expected_tools"]],
         additional_metadata={
-            "suite": SUITE,
+            "suite": suite,
             "case": case["name"],
             "model": model,
             "skillHash": skill_hash(skill),
-            "scenarioHash": cases_hash(Path(__file__)),
+            "scenarioHash": cases_hash(scenario_file),
             "skillVariant": "With skill" if skill else "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],
@@ -104,10 +76,15 @@ def test_connection(case, skill, model, mcp, workspaces):
         ToolResultIntegrity(tool_calls),
         *agentic_metrics(judge, case["ask"]),
     ]
-    # ConnectionProtocol checks the Verify protocol that only SKILL.md teaches, so
-    # running it on the no-skill arm scores the absence of instructions the agent
-    # never received: all 20 no-skill results failed it in the 2026-09-10 matrix,
-    # 9 of them while answering well enough to pass Response quality.
-    if case.get("whoami_first") and skill:
-        metrics.append(ConnectionProtocol(tool_calls))
+    # activates=None opts a case out of activation scoring: a boundary case such
+    # as "move this shift", asked with cancel-shift installed, is right whether
+    # the skill loads and refuses or never loads at all.
+    activates = case.get("activates", True)
+    if skill and activates is not None:
+        metrics.append(SkillActivation(tool_calls, expected=activates, skill=skill))
+    if case.get("shift_date"):
+        offset = {"yesterday": -1, "today": 0, "tomorrow": 1}[case["shift_date"]]
+        metrics.append(
+            ShiftDate(tool_calls, (date.today() + timedelta(days=offset)).isoformat())
+        )
     assert_test(test_case, metrics, run_async=True)

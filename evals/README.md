@@ -1,6 +1,6 @@
 # MCP eval harness
 
-This local DeepEval harness compares the `shiftcare-mcp` skill across Claude and Codex models and evaluates three read-only MCP tasks.
+This local DeepEval harness compares each scenario suite's declared skill across Claude and Codex models using read-only MCP tasks.
 
 Each scenario measures tool correctness, task completion, step efficiency, argument correctness, response quality, and tool-result integrity. Connection verification also checks that `whoami` is the first MCP call. The model-based metrics make several judge calls per scenario, so narrow runs are useful while iterating.
 
@@ -36,6 +36,25 @@ From the repository root, run the full default matrix:
 ./evals/run.sh
 ```
 
+`run.sh` discovers every `evals/test_*.py` suite. Workspace setup creates one `no-skill` workspace and one isolated `with-<skill>` workspace per directory under `skills/`; each with-skill workspace exposes only that skill to both Claude and Codex.
+
+To add a suite, create `test_<skill>.py`; no shared registry changes are needed:
+
+```python
+from pathlib import Path
+import pytest
+from scenario import evaluate
+
+SUITE = "Human suite name"
+SKILL = "skill-directory-name"
+CASES = [{"name": "case", "ask": "prompt", "expected_tools": ["list_clients"], "quality": "rubric"}]
+
+@pytest.mark.parametrize("skill", [SKILL, None], ids=["with-skill", "no-skill"])
+@pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
+def test_scenario(case, skill, model, mcp, workspaces):
+    evaluate(case, skill, model, mcp, workspaces, SUITE, Path(__file__))
+```
+
 The default models are `sonnet,haiku,gpt-5.6-terra,gpt-5.6-luna`. Override them with a comma-separated list and use normal pytest filters as needed:
 
 ```sh
@@ -46,7 +65,7 @@ for i in 1 2 3 4 5; do ./evals/run.sh; done
 
 To repeat a run, loop it. Each run archives its own file in `runs/` and the report pools them, so five runs give five paired comparisons per model rather than overwriting each other. There is no repeat counter to keep in step: the report pairs the with-skill and no-skill arms of a group in order, so appending a sixth run later simply adds a sixth comparison.
 
-Results pool only where they are comparable. Every result carries a `scenarioHash` over the suite's `CASES` and a `skillHash` over the installed skill's files, both taken from the working tree so uncommitted edits count. Editing a prompt or a rubric changes the scenario hash and separates the new results from the old; editing the skill mid-accumulation renders as a labelled before/after comparison rather than averaging two different skills together. Each version gets its own roll-up and sample counts, with the current working tree first, so `n` restarts at zero after an edit. A run's no-skill results count as the control for whichever skill version ran beside them in that file. Results archived before hashes existed are labelled as unverified.
+Results pool only where they are comparable. Every result carries a `scenarioHash` over its suite's `CASES` and a `skillHash` over that suite's declared skill, both taken from the working tree so uncommitted edits count. The report compares hashes per suite. Editing a prompt or rubric separates new results from old; editing a skill mid-accumulation renders as a labelled before/after comparison rather than averaging versions together. Each version gets its own roll-up and sample counts, with the current working tree first, so `n` restarts at zero after an edit. A run's no-skill results count as the control for whichever skill version ran beside them in that file. Results archived before hashes existed are labelled as unverified.
 
 A run that loses its API quota part-way is stopped rather than ground through. Before scenarios run, each worker checks its token against the MCP server and stops with the HTTP status if the server rejects it. Three consecutive scenarios raising anything other than an assertion (the agent runner exiting non-zero, an agent subprocess timing out after 600 seconds, the judge's SDK rejecting a call) end the session, and any real result in between resets the count. A login failure mid-run also stops the session instead of crashing a worker. Metric failures never count. When the judge fails inside a metric, DeepEval still records the test case as successful with an unscored metric; the report drops such results from the pool and the provenance table counts them per run file.
 
@@ -67,8 +86,8 @@ EVAL_JUDGE_MODEL=gpt-5.6-luna EVAL_MODELS=gpt-5.6-luna ./evals/run.sh -k connect
 Run only the offline unit tests from `evals/`:
 
 ```sh
-uv run pytest tests/
-node --test tests/
+uv run pytest tests/ -q
+node tests/index.js
 ```
 
 ## Report
