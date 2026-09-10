@@ -142,6 +142,7 @@ def test_report_renders_comparisons_and_drilldown(tmp_path):
     visible = visible_html(page)
 
     assert "Overview" in visible
+    assert "Case comparisons" in visible
     assert "All results" in visible
     assert "Case detail" in visible
     assert "Check the invented account &lt;carefully&gt;." in visible
@@ -167,6 +168,23 @@ def test_report_renders_comparisons_and_drilldown(tmp_path):
     assert "2000" in visible
 
 
+def test_overview_and_comparisons_are_separate_views_with_tooltips(tmp_path):
+    _, _, page = write_report(tmp_path, invented_run())
+    overview = page[page.index('<section id="overview-view"'):page.index('<section id="comparisons-view"')]
+    comparisons = page[page.index('<section id="comparisons-view"'):page.index('<section id="results-view"')]
+
+    assert 'id="overview-tab"' in page
+    assert 'id="comparisons-tab"' in page
+    assert 'id="overview-view"' in overview
+    assert 'class="metrics rollup"' in overview
+    assert '<table class="matrix">' not in overview
+    assert '<h1>Case comparisons</h1>' in comparisons
+    assert '<table class="matrix">' in comparisons
+    assert 'data-case="C1"' in comparisons
+    assert 'title="The percentage of with-skill results that passed this measure."' in overview
+    assert ".metrics{margin:0}" in page
+
+
 def test_report_renders_unavailable_rows_for_models_in_mixed_case(tmp_path):
     run = invented_run()
     mixed = json.loads(json.dumps(run["testCases"][2]))
@@ -178,7 +196,7 @@ def test_report_renders_unavailable_rows_for_models_in_mixed_case(tmp_path):
 
     _, _, page = write_report(tmp_path, run)
     visible = visible_html(page)
-    overview_case = visible.split('href="#case-c1"', 1)[1].split(
+    comparison_case = visible.split('id="comparisons-view"', 1)[1].split('href="#case-c1"', 1)[1].split(
         'href="#case-c2"', 1
     )[0]
     detail_case = visible.split('id="case-panel-c1"', 1)[1].split(
@@ -188,8 +206,8 @@ def test_report_renders_unavailable_rows_for_models_in_mixed_case(tmp_path):
         "<h2>Scenario results</h2>", 1
     )[0]
 
-    assert "mixed-unpaired-model" in overview_case
-    assert "comparison unavailable" in overview_case
+    assert "mixed-unpaired-model" in comparison_case
+    assert "comparison unavailable" in comparison_case
     assert "mixed-unpaired-model" in per_model
     assert "comparison unavailable" in per_model
 
@@ -285,7 +303,7 @@ def test_report_does_not_colour_increased_overhead_as_quality_regression(tmp_pat
     run["testCases"][0]["metadata"]["usage"]["totalTokens"] = 300
 
     _, _, page = write_report(tmp_path, run)
-    comparisons = visible_html(page).split("<h2>Case comparisons</h2>", 1)[1]
+    comparisons = visible_html(page).split('id="comparisons-view"', 1)[1].split('id="results-view"', 1)[0]
     overview_row = comparisons.split("<tr><td>", 1)[1].split("</tr>", 1)[0]
 
     assert '<td class="overhead"><strong>1.5× more</strong><small>300 / 200</small></td>' in overview_row
@@ -300,7 +318,7 @@ def test_report_uses_measure_words_for_zero_values_and_shows_card_values(tmp_pat
 
     _, _, page = write_report(tmp_path, run)
     visible = visible_html(page)
-    overview_case = visible.split('href="#case-c1"', 1)[1].split(
+    comparison_case = visible.split('id="comparisons-view"', 1)[1].split('href="#case-c1"', 1)[1].split(
         'href="#case-c2"', 1
     )[0]
     detail_case = visible.split('id="case-panel-c1"', 1)[1].split(
@@ -310,10 +328,10 @@ def test_report_uses_measure_words_for_zero_values_and_shows_card_values(tmp_pat
         "<h2>All metric changes</h2>", 1
     )[0]
 
-    assert '<strong>better</strong><small>1.00 / 0.00</small>' in overview_case
-    assert '<strong>lower</strong><small>$0 / $0.002</small>' in overview_case
-    assert '<strong>faster</strong><small>0.0s / 6.0s</small>' in overview_case
-    assert '<strong>fewer</strong><small>0 / 1</small>' in overview_case
+    assert '<strong>better</strong><small>1.00 / 0.00</small>' in comparison_case
+    assert '<strong>lower</strong><small>$0 / $0.002</small>' in comparison_case
+    assert '<strong>faster</strong><small>0.0s / 6.0s</small>' in comparison_case
+    assert '<strong>fewer</strong><small>0 / 1</small>' in comparison_case
     assert "Estimated cost" in impact
     assert "lower" in impact
     assert "$0 / $0.002" in impact
@@ -381,12 +399,12 @@ def test_report_aggregates_only_pairs_with_both_measure_values(tmp_path, complet
         assert '<strong>2.0× better</strong><small>0.60 / 0.30</small>' in aggregate
         assert '<td>Response quality</td><td>0.60</td><td>0.30</td><td>2.0× better</td>' in aggregate
         assert '<strong>2.0× higher</strong><small>$0.6 / $0.3</small>' in aggregate
-        assert '<td>Estimated cost</td><td>$0.6</td><td>$0.3</td><td>2.0× higher</td>' in aggregate
+        assert 'Estimated cost</abbr></td><td>$0.6</td><td>$0.3</td><td>2.0× higher</td>' in aggregate
     else:
         assert '<span>Response quality</span><strong>comparison unavailable</strong><small>— / —</small>' in aggregate
         assert '<td>Response quality</td><td>—</td><td>—</td><td>comparison unavailable</td>' in aggregate
-        assert '<span>Estimated cost</span><strong>comparison unavailable</strong><small>— / —</small>' in aggregate
-        assert '<td>Estimated cost</td><td>—</td><td>—</td><td>comparison unavailable</td>' in aggregate
+        assert 'Estimated cost</abbr></span><strong>comparison unavailable</strong><small>— / —</small>' in aggregate
+        assert 'Estimated cost</abbr></td><td>—</td><td>—</td><td>comparison unavailable</td>' in aggregate
     assert '<strong>2.0× fewer</strong><small>100 / 200</small>' in aggregate
 
 
@@ -493,8 +511,8 @@ def test_report_rolls_up_matrix_and_suite_without_cross_case_pair_collisions(tmp
     run["testCases"] = first_pair + second_pair
 
     _, _, page = write_report(tmp_path, run)
-    rollup = visible_html(page).split('id="rollup-performance"', 1)[1].split(
-        "<h2>Case comparisons</h2>", 1
+    rollup = visible_html(page).split('id="overview-view"', 1)[1].split(
+        'id="comparisons-view"', 1
     )[0]
 
     assert "Whole matrix" in rollup

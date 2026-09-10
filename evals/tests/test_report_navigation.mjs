@@ -34,7 +34,7 @@ function reportPage(hash) {
     nodes.set(id, element);
     return element;
   }
-  for (const view of ['overview', 'results', 'case']) {
+  for (const view of ['overview', 'comparisons', 'results', 'case']) {
     node(view + '-view').hidden = view !== 'overview';
     node(view + '-tab');
   }

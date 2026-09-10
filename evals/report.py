@@ -36,10 +36,43 @@ OVERHEAD_KEYS = (
     "turns",
     "tool_calls",
 )
+GLOSSARY = {
+    "Overall success": "The stored pass/fail result for the complete scenario.",
+    "Tool Correctness": "Whether the expected tool names were called. This evaluation allows extra calls and does not require a particular order.",
+    "Response quality [GEval]": "A judge score for the scenario-specific response requirement, including whether factual claims agree with the called tools' outputs.",
+    "Tool Result Integrity": "Whether every tool call completed without an error, returned an output, and avoided known truncation markers.",
+    "Task Completion": "A judge score comparing the user's task with the factual outcome extracted from the execution trace.",
+    "Step Efficiency": "A judge score for completing the task with the fewest, simplest, and most direct actions in the execution trace.",
+    "Argument Correctness": "The share of evaluated tool calls whose non-empty input parameters correctly and relevantly address the user's request; skill-loading calls are excluded.",
+    "Skill Activation": "Whether the trace loaded the ShiftCare skill when the scenario expected it to, or avoided loading it when it did not.",
+    "Connection Protocol": "Whether the first ShiftCare data call was whoami and at least one read-only call followed it, ignoring skill-loading and compatibility-check calls.",
+    "Shift Date": "Whether list_shifts was called with the date expected by the scenario.",
+    "Input tokens": "Input tokens reported by the agent run.",
+    "Output tokens": "Output tokens reported by the agent run.",
+    "Tokens": "Total tokens reported by the agent run, or input plus output tokens when no total was reported.",
+    "Estimated cost": "Estimated run cost from DeepEval's token cost, falling back to the agent's reported USD usage cost.",
+    "Duration": "Elapsed run time from duration metadata, falling back to DeepEval's completion time.",
+    "Turns": "Number of agent turns reported by the run.",
+    "Tool calls": "Number of tool calls reported by the run, falling back to the number of stored calls.",
+    "With skill pass rate": "The percentage of with-skill results that passed this measure.",
+    "No skill pass rate": "The percentage of no-skill results that passed this measure.",
+    "With skill median": "The median with-skill value among pairs that have values for both arms.",
+    "No skill median": "The median no-skill value among pairs that have values for both arms.",
+    "Change": "A plain-language comparison of the two paired medians; higher quality and lower overhead count as improvements.",
+    "Mean effect": "The mean per-pair difference. Positive means higher quality or lower overhead with the skill.",
+    "Median effect": "The median per-pair difference. Positive means higher quality or lower overhead with the skill.",
+    "95% interval": "The 2.5th to 97.5th percentile interval from 10,000 seeded bootstrap resamples of the mean paired effect.",
+    "Paired sample": "The number of with-skill/no-skill pairs with values for this measure; each model's two arms are zipped in stored order.",
+}
 
 
 def escape(value):
     return html.escape(str(value), quote=True)
+
+
+def glossary_label(label):
+    title = GLOSSARY.get(label)
+    return f'<abbr title="{escape(title)}">{escape(label)}</abbr>' if title else escape(label)
 
 
 def pretty(value):
@@ -338,9 +371,9 @@ def measure_specs(results):
     return specs
 
 
-def render_overview(suites, all_results, sources_list):
+def render_comparisons(suites, all_results):
     specs = measure_specs(all_results)
-    headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
+    headings = "".join(f"<th>{glossary_label(label)}</th>" for _, label, *_ in specs)
     rows = []
     for suite in suites:
         rows.append(
@@ -380,12 +413,18 @@ def render_overview(suites, all_results, sources_list):
                     + "</tr>"
                 )
     return f"""
+    <section id="comparisons-view" class="matrix-view" hidden>
+      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Case comparisons</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div></div>
+      <div class="matrix-wrap"><table class="matrix"><thead><tr><th>Model pair</th><th>Overall result</th>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>
+    </section>"""
+
+
+def render_overview(suites, all_results, sources_list):
+    return f"""
     <section id="overview-view" class="matrix-view">
-      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Skill impact overview</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div><details class="sources"><summary>Result data</summary><ul>{sources_list}</ul></details></div>
+      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Roll-up performance overview</h1><p>Positive effects mean better quality or lower overhead. Pass rates are per arm; intervals use paired case/model/repeat observations.</p></div><details class="sources"><summary>Result data</summary><ul>{sources_list}</ul></details></div>
       <div class="summary-strip"><span><strong>{sum(len(pairs_for(case['results'])) for suite in suites for case in suite['cases'])}</strong> paired comparisons</span><span><strong>{len(all_results)}</strong> scenario results</span></div>
       {render_rollups(suites, all_results)}
-      <h2>Case comparisons</h2>
-      <div class="matrix-wrap"><table class="matrix"><thead><tr><th>Model pair</th><th>Overall result</th>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>
     </section>"""
 
 
@@ -400,7 +439,7 @@ def cell_class(value, values, higher_is_better):
 
 def render_all_results(suites, all_results, sources_list):
     specs = measure_specs(all_results)
-    headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
+    headings = "".join(f"<th>{glossary_label(label)}</th>" for _, label, *_ in specs)
     rows = []
     for suite in suites:
         suite_results = [result for case in suite["cases"] for result in case["results"]]
@@ -457,13 +496,17 @@ def aggregate_rows(case_results, specs):
         low, high = bootstrap_mean_interval(differences)
         interval = f"{effect_number(low, kind)} to {effect_number(high, kind)}" if low is not None else "—"
         rows.append(
-            f"<tr><td>{escape(label)}</td><td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td><td>{escape(comparison(with_value, without_value, higher, positive, negative))}</td><td>{wins} win{'s' if wins != 1 else ''} / {ties} tie{'s' if ties != 1 else ''} / {losses} loss{'es' if losses != 1 else ''}</td><td>{effect_number(mean, kind)}</td><td>{effect_number(median, kind)}</td><td>{interval}</td><td>n={len(differences)}</td></tr>"
+            f"<tr><td>{glossary_label(label)}</td><td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td><td>{escape(comparison(with_value, without_value, higher, positive, negative))}</td><td>{wins} win{'s' if wins != 1 else ''} / {ties} tie{'s' if ties != 1 else ''} / {losses} loss{'es' if losses != 1 else ''}</td><td>{effect_number(mean, kind)}</td><td>{effect_number(median, kind)}</td><td>{interval}</td><td>n={len(differences)}</td></tr>"
         )
     return "".join(rows)
 
 
 def aggregate_table(case_results, specs):
-    return f'<div class="matrix-wrap"><table class="metrics"><thead><tr><th>Metric</th><th>With skill</th><th>No skill</th><th>Change</th><th>Wins / ties / losses</th><th>Mean effect</th><th>Median effect</th><th>95% interval</th><th>Sample</th></tr></thead><tbody>{aggregate_rows(case_results, specs)}</tbody></table></div>'
+    headings = "".join(
+        f"<th>{glossary_label(label)}</th>"
+        for label in ("Metric", "With skill", "No skill", "Change", "Wins / ties / losses", "Mean effect", "Median effect", "95% interval", "Sample")
+    )
+    return f'<div class="matrix-wrap"><table class="metrics"><thead><tr>{headings}</tr></thead><tbody>{aggregate_rows(case_results, specs)}</tbody></table></div>'
 
 
 def pass_rate(results, key, variant):
@@ -500,7 +543,7 @@ def rollup_table(results, pairs, specs):
             else "—"
         )
         rows.append(
-            f"<tr><td>{escape(label)}</td>"
+            f"<tr><td>{glossary_label(label)}</td>"
             f'<td>{pass_rate(results, key, "With skill")}</td>'
             f'<td>{pass_rate(results, key, "No skill")}</td>'
             f"<td>{number(with_value, kind)}</td><td>{number(without_value, kind)}</td>"
@@ -508,7 +551,11 @@ def rollup_table(results, pairs, specs):
             f"<td>{effect_number(mean, kind)}</td><td>{effect_number(median, kind)}</td>"
             f"<td>{interval}</td><td>n={len(differences)}</td></tr>"
         )
-    return f'<div class="matrix-wrap"><table class="metrics rollup"><thead><tr><th>Metric</th><th>With skill pass rate</th><th>No skill pass rate</th><th>With skill median</th><th>No skill median</th><th>Change</th><th>Mean effect</th><th>Median effect</th><th>95% interval</th><th>Paired sample</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    headings = "".join(
+        f"<th>{glossary_label(label)}</th>"
+        for label in ("Metric", "With skill pass rate", "No skill pass rate", "With skill median", "No skill median", "Change", "Mean effect", "Median effect", "95% interval", "Paired sample")
+    )
+    return f'<div class="matrix-wrap"><table class="metrics rollup"><thead><tr>{headings}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
 
 
 def render_rollups(suites, all_results):
@@ -525,7 +572,7 @@ def render_rollups(suites, all_results):
         sections.append(
             f"<h3>{escape(suite['name'])}</h3>{rollup_table(suite_results, suite_pairs, specs)}"
         )
-    return f'<section id="rollup-performance"><h2>Roll-up performance</h2><p>Positive effects mean better quality or lower overhead. Pass rates are per arm; intervals use paired case/model/repeat observations.</p>{"".join(sections)}</section>'
+    return f'<section id="rollup-performance">{"".join(sections)}</section>'
 
 
 def aggregate_impact(case_results):
@@ -542,7 +589,7 @@ def aggregate_impact(case_results):
     for key, label, kind, higher, positive, negative in wanted:
         with_value, without_value = paired_medians(pairs, key)
         cards.append(
-            f'<div class="impact"><span>{escape(label)}</span><strong>{escape(comparison(with_value, without_value, higher, positive, negative))}</strong><small>{number(with_value, kind)} / {number(without_value, kind)}</small></div>'
+            f'<div class="impact"><span>{glossary_label(label)}</span><strong>{escape(comparison(with_value, without_value, higher, positive, negative))}</strong><small>{number(with_value, kind)} / {number(without_value, kind)}</small></div>'
         )
     return "".join(cards)
 
@@ -554,7 +601,7 @@ def render_result(result):
         metric_status = "Pass" if metric.get("success") else "Fail"
         metric_rows.append(
             "<tr>"
-            f'<td>{escape(metric.get("name", "Unnamed metric"))}</td>'
+            f'<td>{glossary_label(metric.get("name", "Unnamed metric"))}</td>'
             f'<td class="{metric_status.lower()}-text">{metric_status}</td>'
             f'<td>{number(metric.get("score"), "score")}</td>'
             f'<td>{number(metric.get("threshold"), "score")}</td>'
@@ -584,7 +631,7 @@ def render_case(case, suite, skill_hash, scenario_hash):
     specs = measure_specs(results)
     quality_specs = [spec for spec in specs if is_quality(spec[0])]
     overhead_specs = [spec for spec in specs if not is_quality(spec[0])]
-    model_headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
+    model_headings = "".join(f"<th>{glossary_label(label)}</th>" for _, label, *_ in specs)
     model_rows = []
     for model, repeat, with_skill, no_skill in comparisons_for(results):
         model_label = comparison_label(model, repeat, results)
@@ -674,14 +721,14 @@ def render_case_view(suites, skill_hash, scenario_hashes, provenance):
 
 STYLE = """
 :root{--ink:#18212b;--muted:#66717d;--rule:#d7dde3;--paper:#fff;--soft:#f4f6f8;--good:#176b45;--bad:#a12b2b;--header:64px;color-scheme:light}
-*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font:14px/1.45 ui-sans-serif,system-ui,sans-serif}a{color:inherit}button{font:inherit}.report-header{position:sticky;top:0;z-index:20;background:#17212b;color:#fff;min-height:var(--header);padding:12px 24px;display:flex;align-items:center;justify-content:space-between}.view-tabs{display:flex;gap:5px}.view-tabs button,.download-button{border:1px solid #89929c;border-radius:5px;background:transparent;color:inherit;padding:8px 12px;cursor:pointer}.view-tabs button.active{background:#fff;color:#17212b}.view-tabs button:focus-visible,.download-button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #efb83d;outline-offset:2px}.saved{color:#d7dde3}.matrix-view{padding:28px}.view-head{display:flex;justify-content:space-between;gap:20px;align-items:start}.view-head h1,.case-panel h1{margin:.2rem 0}.matrix-view .download-button{color:var(--ink)}.summary-strip,.facts{display:flex;gap:24px;flex-wrap:wrap;background:var(--soft);padding:12px;margin:18px 0}.summary-strip span,.facts span{white-space:nowrap}.matrix-wrap{overflow:auto;border:1px solid var(--rule)}table{border-collapse:collapse;width:100%}th,td{padding:9px 11px;border-bottom:1px solid var(--rule);vertical-align:top;text-align:left;white-space:nowrap}th{position:sticky;top:var(--header);background:#e9edf1;z-index:3;color:var(--muted)}td small,.matrix td a+small{display:block;color:var(--muted)}.suite-row td{background:#293746;color:#fff;font-weight:700}.case-row td{background:#e9edf1;font-weight:650}.unavailable td{background:#fff8df}.best{background:#def2e7}.worst{background:#f9dddd}.improved,.pass-text{color:var(--good)}.regressed,.fail-text{color:var(--bad)}.entity-id{font-family:ui-monospace,monospace;font-weight:750}.entity-label,.turn-label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.legend{margin:10px 0}.key{display:inline-block;width:12px;height:12px;margin:0 4px 0 14px}.report-grid{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{border-right:1px solid var(--rule);padding:24px;min-height:calc(100vh - var(--header));background:var(--soft)}aside details{scroll-margin-top:calc(var(--header) + 14px)}aside summary{padding:6px 0}aside summary button{border:0;background:transparent;text-align:left;cursor:pointer;padding:0}aside a{display:block;padding:5px 0 5px 18px;text-decoration:none}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.dot.pass{background:var(--good)}.dot.fail{background:var(--bad)}main{padding:28px;min-width:0}.case-panel,.result-detail{scroll-margin-top:calc(var(--header) + 14px)}.case-panel section{margin:20px 0}.instructions,.message{white-space:pre-wrap;border-left:3px solid #89929c;padding:12px;background:var(--soft)}.metrics{margin:10px 0 24px}.metrics th{top:var(--header)}.matrix-wrap th{top:0}.result-detail{border:1px solid var(--rule);margin:10px 0}.result-detail>summary{display:grid;grid-template-columns:60px 1fr 1fr auto;gap:12px;align-items:center;padding:12px;cursor:pointer}.result-content{padding:0 14px 14px}.turn{margin:12px 0}.tool-call{border:1px solid #c7b8db}.tool-call summary{padding:9px;background:#eee8f5;font-weight:700}.tool-body{display:grid;grid-template-columns:1fr 1fr}.tool-body>div{padding:10px;min-width:0}.tool-body>div+div{border-left:1px solid #c7b8db}pre{overflow:auto;white-space:pre-wrap;margin:.5rem 0 0}.privacy{padding:20px 28px;color:var(--muted);border-top:1px solid var(--rule)}[hidden]{display:none!important}
-.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border:1px solid var(--rule);margin:10px 0 24px}.impact{padding:12px}.impact+.impact{border-left:1px solid var(--rule)}.impact span,.impact strong{display:block}.reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}.warning{padding:12px;border-left:4px solid #b16b00;background:#fff3cd}.caveat{color:var(--muted)}.sources summary{cursor:pointer;color:var(--muted)}.sources ul{margin:.4rem 0;padding-left:1.1rem}.sources code{overflow-wrap:anywhere}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font:14px/1.45 ui-sans-serif,system-ui,sans-serif}a{color:inherit}button{font:inherit}.report-header{position:sticky;top:0;z-index:20;background:#17212b;color:#fff;min-height:var(--header);padding:12px 24px;display:flex;align-items:center;justify-content:space-between}.view-tabs{display:flex;gap:5px}.view-tabs button,.download-button{border:1px solid #89929c;border-radius:5px;background:transparent;color:inherit;padding:8px 12px;cursor:pointer}.view-tabs button.active{background:#fff;color:#17212b}.view-tabs button:focus-visible,.download-button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #efb83d;outline-offset:2px}.saved{color:#d7dde3}.matrix-view{padding:28px}.view-head{display:flex;justify-content:space-between;gap:20px;align-items:start}.view-head h1,.case-panel h1{margin:.2rem 0}.matrix-view .download-button{color:var(--ink)}.summary-strip,.facts{display:flex;gap:24px;flex-wrap:wrap;background:var(--soft);padding:12px;margin:18px 0}.summary-strip span,.facts span{white-space:nowrap}.matrix-wrap{overflow:auto;border:1px solid var(--rule)}table{border-collapse:collapse;width:100%}th,td{padding:9px 11px;border-bottom:1px solid var(--rule);vertical-align:top;text-align:left;white-space:nowrap}th{position:sticky;top:var(--header);background:#e9edf1;z-index:3;color:var(--muted)}td small,.matrix td a+small{display:block;color:var(--muted)}.suite-row td{background:#293746;color:#fff;font-weight:700}.case-row td{background:#e9edf1;font-weight:650}.unavailable td{background:#fff8df}.best{background:#def2e7}.worst{background:#f9dddd}.improved,.pass-text{color:var(--good)}.regressed,.fail-text{color:var(--bad)}.entity-id{font-family:ui-monospace,monospace;font-weight:750}.entity-label,.turn-label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.legend{margin:10px 0}.key{display:inline-block;width:12px;height:12px;margin:0 4px 0 14px}.report-grid{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{border-right:1px solid var(--rule);padding:24px;min-height:calc(100vh - var(--header));background:var(--soft)}aside details{scroll-margin-top:calc(var(--header) + 14px)}aside summary{padding:6px 0}aside summary button{border:0;background:transparent;text-align:left;cursor:pointer;padding:0}aside a{display:block;padding:5px 0 5px 18px;text-decoration:none}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.dot.pass{background:var(--good)}.dot.fail{background:var(--bad)}main{padding:28px;min-width:0}.case-panel,.result-detail{scroll-margin-top:calc(var(--header) + 14px)}.case-panel section{margin:20px 0}.instructions,.message{white-space:pre-wrap;border-left:3px solid #89929c;padding:12px;background:var(--soft)}.metrics{margin:0}.metrics th{top:var(--header)}.matrix-wrap th{top:0}.result-detail{border:1px solid var(--rule);margin:10px 0}.result-detail>summary{display:grid;grid-template-columns:60px 1fr 1fr auto;gap:12px;align-items:center;padding:12px;cursor:pointer}.result-content{padding:0 14px 14px}.turn{margin:12px 0}.tool-call{border:1px solid #c7b8db}.tool-call summary{padding:9px;background:#eee8f5;font-weight:700}.tool-body{display:grid;grid-template-columns:1fr 1fr}.tool-body>div{padding:10px;min-width:0}.tool-body>div+div{border-left:1px solid #c7b8db}pre{overflow:auto;white-space:pre-wrap;margin:.5rem 0 0}.privacy{padding:20px 28px;color:var(--muted);border-top:1px solid var(--rule)}[hidden]{display:none!important}
+.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border:1px solid var(--rule);margin:10px 0 24px}.impact{padding:12px}.impact+.impact{border-left:1px solid var(--rule)}.impact span,.impact strong{display:block}abbr[title]{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}.reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}.warning{padding:12px;border-left:4px solid #b16b00;background:#fff3cd}.caveat{color:var(--muted)}.sources summary{cursor:pointer;color:var(--muted)}.sources ul{margin:.4rem 0;padding-left:1.1rem}.sources code{overflow-wrap:anywhere}
 @media(max-width:800px){:root{--header:100px}.report-header,.view-head{align-items:start;flex-direction:column}.report-grid{display:block}aside{min-height:0;border-right:0;border-bottom:1px solid var(--rule)}.tool-body{grid-template-columns:1fr}.tool-body>div+div{border-left:0;border-top:1px solid #c7b8db}}
 """
 
 
 SCRIPT = """
-const views = ['overview', 'results', 'case'];
+const views = ['overview', 'comparisons', 'results', 'case'];
 function setView(view) {
   for (const name of views) {
     document.getElementById(name + '-view').hidden = name !== view;
@@ -744,8 +791,8 @@ def render(sources, saved):
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>MCP evaluation report</title><style>{STYLE}</style></head>
-<body><header class="report-header"><strong>MCP evaluation report</strong><span class="saved">Results saved <time datetime="{saved_iso}">{escape(saved_text)}</time></span><nav class="view-tabs" aria-label="Report views"><button id="overview-tab" class="active" type="button">Overview</button><button id="results-tab" type="button">All results</button><button id="case-tab" type="button">Case detail</button></nav></header>
-{render_overview(suites, results, sources_list)}{render_all_results(suites, results, sources_list)}{render_case_view(suites, skill_hash, scenario_hashes, provenance)}
+<body><header class="report-header"><strong>MCP evaluation report</strong><span class="saved">Results saved <time datetime="{saved_iso}">{escape(saved_text)}</time></span><nav class="view-tabs" aria-label="Report views"><button id="overview-tab" class="active" type="button">Overview</button><button id="comparisons-tab" type="button">Case comparisons</button><button id="results-tab" type="button">All results</button><button id="case-tab" type="button">Case detail</button></nav></header>
+{render_overview(suites, results, sources_list)}{render_comparisons(suites, results)}{render_all_results(suites, results, sources_list)}{render_case_view(suites, skill_hash, scenario_hashes, provenance)}
 <p class="privacy">This report contains local evaluation inputs, tool outputs, and judge reasons. Keep it private and do not upload it.</p>
 <script>{SCRIPT}</script></body></html>"""
 
