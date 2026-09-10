@@ -141,7 +141,7 @@ the more useful thing to tell the user.
 | 10 | A shift invoiced | `list_invoices`, then `list_invoiceable_items` for the same period | At least one invoice exists | No invoices. If `list_invoiceable_items` returns a non-zero `estimated_total` while `list_invoices` is empty, say so plainly: there is billable work sitting uninvoiced |
 | 11 | Progress notes | `list_progress_notes` | A note on a client that is not seeded, or written by someone other than the owner, or created outside the seeding burst | Around ten notes, all on the seeded demo client, all authored by the registered owner, all sharing one created-at second, all on the Care Signals demo shift |
 | 12 | Teams (optional) | `list_teams` | Any team | Never seeded, so zero means genuinely none. Fine to leave empty |
-| 13 | Forms | `list_forms`, `include_metadata` true, where the tool is present | A **published** form: sign-up clones the template library as **draft**, and `list_forms` returns published forms only, so anything it returns was published by a person. Report an `incident` form separately — submitting one is what opens an incident ticket | Zero published forms. Tool absent → **Cannot check** |
+| 13 | Forms | `list_form_responses`, `include_metadata` true, `per_page` 3; plus `list_forms` where that tool is present | A submitted response: it names the `form_id` and `form_name` of a published form somebody built or published **and** filled in. Where `list_forms` exists, a **published** form counts on its own — sign-up clones the template library as **draft**, and `list_forms` returns published forms only, so anything it returns was published by a person. Report an `incident` form separately — submitting one is what opens an incident ticket | No responses visible, and either no `list_forms` or it returns nothing. Both tools absent → **Cannot check** |
 
 **Row 9 matters most, and it has two sources.** Prefer `list_timesheets`: each timesheet
 can carry `shift_id`, `status`, `clockin_at`, `clockout_at` and the two clocking locations,
@@ -170,14 +170,22 @@ named `list_client_notes` on some servers; use whichever is present. Customers c
 progress notes, shift notes, client notes or communications, and **in the US usually care
 notes** — mirror the user's own word back in the report.
 
-**Row 13 lists definitions, not submissions.** Send `form_type` explicitly — `general`, then
-`incident` — because the unfiltered list also returns types no filter can select, and the
+**Row 13 has two sources, and the tool list decides which you have.** `list_form_responses`
+is the one most servers expose: each row carries `form_id`, `form_name`, `responder_type` and
+`status`, so one response proves a published form exists and has been used — that is the
+follow-through signal, and the strongest Done. `list_forms` lists the definitions themselves
+and is exposed on fewer servers; where you have it, send `form_type` explicitly — `general`,
+then `incident` — because the unfiltered list also returns types no filter can select, and the
 template library comes back mixed in with real forms with nothing to tell them apart. A
-published template still counts: someone chose to publish it. What `list_forms` cannot tell you
-is whether anyone has filled a form in; `list_form_responses` reads submissions, and for this
-check that is a nicety, not a row. Visibility runs through the account's Manage Forms policy
-and an empty list can mean the caller's role sees none, so report "none visible" rather than
-"none". `get_form` reads one form's questions and is not needed here.
+published template still counts: someone chose to publish it. `get_form` reads one form's
+questions and is not needed here.
+
+Two scoping traps make an empty result weak evidence. Responses to a form with **Private
+Responses** on — the default for a new form — are visible only to an admin, so a coordinator
+credential can see none of them. And form visibility runs through the account's Manage Forms
+policy. Report "no submissions visible to this credential" rather than "no forms", and when
+`list_forms` is absent say plainly that a published form nobody has filled in yet would not
+show.
 
 **Incidents are a capability, not a milestone.** `list_incidents` works, and zero incidents
 is a good sign rather than a gap — never score it and never put it under "Remaining", which
