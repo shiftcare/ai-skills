@@ -62,7 +62,7 @@ GLOSSARY = {
     "Mean effect": "The mean per-pair difference. Positive means higher quality or lower overhead with the skill.",
     "Median effect": "The median per-pair difference. Positive means higher quality or lower overhead with the skill.",
     "95% interval": "The 2.5th to 97.5th percentile interval from 10,000 seeded bootstrap resamples of the mean paired effect.",
-    "Paired sample": "The number of with-skill/no-skill pairs with values for this measure; each model's two arms are zipped in stored order.",
+    "Paired sample": "The number of with-skill/no-skill pairs with values for this measure; each model's two arms are zipped in stored order within one skill/scenario version.",
 }
 
 
@@ -216,6 +216,59 @@ def pairs_for(results):
     ]
 
 
+CURRENT_VERSION = "current working tree"
+
+
+def attribute_versions(results, provenance, current_skill, current_scenarios):
+    """Stamp every result with the version it was collected under.
+
+    The no-skill arm has no skill to hash, so it borrows the with-skill hash from
+    the same run file: a file comes from one working tree, so that is the skill
+    it served as the control for. Without this the one control list is reused
+    against every skill version and n never resets after an edit.
+
+    A version is a label rather than a raw hash pair because the scenario hash
+    differs per suite by design; what matters is whether a result matches the
+    current tree for its own suite, and if not, which tree it came from.
+    """
+    offset = 0
+    for _, count in provenance:
+        batch = results[offset:offset + count]
+        offset += count
+        hashes = {result["skill_hash"] for result in batch if result["variant"] == "With skill"}
+        paired = hashes.pop() if len(hashes) == 1 else current_skill
+        for result in batch:
+            if result["variant"] == "No skill":
+                result["skill_hash"] = paired
+    for result in results:
+        skill, scenario = result["skill_hash"], result["scenario_hash"]
+        if skill == current_skill and scenario == current_scenarios.get(result["suite"]):
+            result["version"] = CURRENT_VERSION
+        elif skill == "legacy":
+            result["version"] = "predates content hashes; comparability unverified"
+        else:
+            result["version"] = f"skill {skill} · scenarios {scenario}"
+
+
+def versions_of(results):
+    """Distinct versions in order of appearance, the current tree's first."""
+    versions = dict.fromkeys(result["version"] for result in results)
+    return sorted(versions, key=lambda version: version != CURRENT_VERSION)
+
+
+def only_version(suites, version):
+    return [
+        {
+            **suite,
+            "cases": [
+                {**case, "results": [r for r in case["results"] if r["version"] == version]}
+                for case in suite["cases"]
+            ],
+        }
+        for suite in suites
+    ]
+
+
 def comparisons_for(results):
     """Pair with-skill and no-skill results by zipping each model's arms in order.
 
@@ -224,47 +277,37 @@ def comparisons_for(results):
     pair count rises, with no counter to keep in step. Surplus results on either
     side are reported as unavailable comparisons rather than silently dropped.
 
-    Results are grouped by (model, skill_hash of the with-skill arm) so a skill
-    edited mid-accumulation renders as a labelled before/after rather than
-    averaging two different skills together.
+    Groups are (model, version), so a skill edited mid-accumulation renders as a
+    labelled before/after with its own sample rather than averaging two
+    different skills together.
     """
     comparisons = []
-    for model in dict.fromkeys(result["model"] for result in results):
-        arms = {
-            variant: [
-                result
-                for result in results
-                if result["model"] == model and result["variant"] == variant
-            ]
-            for variant in ("With skill", "No skill")
-        }
-        for hash_value in dict.fromkeys(
-            result["skill_hash"] for result in arms["With skill"]
-        ) or [None]:
-            with_skill = [
-                result for result in arms["With skill"] if result["skill_hash"] == hash_value
-            ]
-            # The no-skill arm has no skill to hash, so it is shared across the
-            # with-skill hashes rather than split by them.
-            no_skill = arms["No skill"]
+    for version in versions_of(results):
+        for model in dict.fromkeys(result["model"] for result in results):
+            arms = {
+                variant: [
+                    result
+                    for result in results
+                    if result["model"] == model
+                    and result["version"] == version
+                    and result["variant"] == variant
+                ]
+                for variant in ("With skill", "No skill")
+            }
+            with_skill, no_skill = arms["With skill"], arms["No skill"]
             for index in range(max(len(with_skill), len(no_skill))):
                 comparisons.append((
                     model,
-                    hash_value,
+                    version,
                     with_skill[index] if index < len(with_skill) else None,
                     no_skill[index] if index < len(no_skill) else None,
                 ))
     return comparisons
 
 
-def comparison_label(model, skill_hash_value, results):
-    hashes = {
-        result["skill_hash"]
-        for result in results
-        if result["variant"] == "With skill" and result["skill_hash"] != NO_SKILL
-    }
-    if len(hashes) > 1 and skill_hash_value:
-        return f"{model} · skill {skill_hash_value}"
+def comparison_label(model, version, results):
+    if len(versions_of(results)) > 1:
+        return f"{model} · {version}"
     return model
 
 
@@ -383,8 +426,8 @@ def render_comparisons(suites, all_results):
             rows.append(
                 f'<tr class="case-row"><td colspan="{len(specs) + 2}"><a class="entity-id" href="#case-{case["id"].lower()}" data-case="{case["id"]}">{case["id"]}</a> · Case · {escape(case["name"])}</td></tr>'
             )
-            for model, repeat, with_skill, no_skill in comparisons_for(case["results"]):
-                model_label = comparison_label(model, repeat, case["results"])
+            for model, version, with_skill, no_skill in comparisons_for(case["results"]):
+                model_label = comparison_label(model, version, case["results"])
                 if not with_skill or not no_skill:
                     present = with_skill or no_skill
                     missing = "No skill" if with_skill else "With skill"
@@ -423,9 +466,32 @@ def render_overview(suites, all_results, sources_list):
     return f"""
     <section id="overview-view" class="matrix-view">
       <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Roll-up performance overview</h1><p>Positive effects mean better quality or lower overhead. Pass rates are per arm; intervals use paired case/model/repeat observations.</p></div><details class="sources"><summary>Result data</summary><ul>{sources_list}</ul></details></div>
-      <div class="summary-strip"><span><strong>{sum(len(pairs_for(case['results'])) for suite in suites for case in suite['cases'])}</strong> paired comparisons</span><span><strong>{len(all_results)}</strong> scenario results</span></div>
-      {render_rollups(suites, all_results)}
+      {render_versions(suites, all_results)}
     </section>"""
+
+
+def render_versions(suites, all_results):
+    """One roll-up per version so an edited skill starts its sample from zero.
+
+    The current tree comes first; when nothing matches it, the report says so
+    instead of quietly presenting an older skill's numbers as today's.
+    """
+    versions = versions_of(all_results)
+    sections = []
+    if versions and versions[0] != CURRENT_VERSION:
+        sections.append(
+            f'<p class="warning"><strong>No results match the current working tree.</strong> Every pooled result was collected under an earlier skill or scenario version; run <code>./evals/run.sh</code> to start a fresh sample. Earlier versions are shown below for history.</p>'
+        )
+    for version in versions:
+        results = [result for result in all_results if result["version"] == version]
+        version_suites = only_version(suites, version)
+        pairs = sum(len(pairs_for(case["results"])) for suite in version_suites for case in suite["cases"])
+        sections.append(
+            f'<section class="version"><h2>{escape(version[0].upper() + version[1:])}</h2>'
+            f'<div class="summary-strip"><span><strong>{pairs}</strong> paired comparisons</span><span><strong>{len(results)}</strong> scenario results</span></div>'
+            f'{render_rollups(version_suites, results)}</section>'
+        )
+    return "".join(sections)
 
 
 def cell_class(value, values, higher_is_better):
@@ -569,10 +635,11 @@ def render_rollups(suites, all_results):
     for suite in suites:
         suite_results = [result for case in suite["cases"] for result in case["results"]]
         suite_pairs = [pair for case in suite["cases"] for pair in pairs_for(case["results"])]
-        sections.append(
-            f"<h3>{escape(suite['name'])}</h3>{rollup_table(suite_results, suite_pairs, specs)}"
-        )
-    return f'<section id="rollup-performance">{"".join(sections)}</section>'
+        if suite_results:
+            sections.append(
+                f"<h3>{escape(suite['name'])}</h3>{rollup_table(suite_results, suite_pairs, specs)}"
+            )
+    return f'<section class="rollup-performance">{"".join(sections)}</section>'
 
 
 def aggregate_impact(case_results):
@@ -633,8 +700,8 @@ def render_case(case, suite, skill_hash, scenario_hash):
     overhead_specs = [spec for spec in specs if not is_quality(spec[0])]
     model_headings = "".join(f"<th>{glossary_label(label)}</th>" for _, label, *_ in specs)
     model_rows = []
-    for model, repeat, with_skill, no_skill in comparisons_for(results):
-        model_label = comparison_label(model, repeat, results)
+    for model, version, with_skill, no_skill in comparisons_for(results):
+        model_label = comparison_label(model, version, results)
         if not with_skill or not no_skill:
             missing = "No skill" if with_skill else "With skill"
             model_rows.append(
@@ -653,14 +720,17 @@ def render_case(case, suite, skill_hash, scenario_hash):
         )
     comparison_copy = f"{len(pairs)} paired model comparison{'s' if len(pairs) != 1 else ''}" if pairs else "comparison unavailable"
     sample_counts = []
-    for model in dict.fromkeys(result["model"] for result in results):
-        for variant in ("With skill", "No skill"):
-            count = sum(
-                result["model"] == model and result["variant"] == variant
-                for result in results
-            )
-            if count:
-                sample_counts.append((model, variant, count))
+    for version in versions_of(results):
+        for model in dict.fromkeys(result["model"] for result in results):
+            for variant in ("With skill", "No skill"):
+                count = sum(
+                    result["model"] == model
+                    and result["variant"] == variant
+                    and result["version"] == version
+                    for result in results
+                )
+                if count:
+                    sample_counts.append((comparison_label(model, version, results), variant, count))
     sample_summary = "".join(
         f"<span>{escape(model)} · {escape(variant)}: <strong>n={count}</strong></span>"
         for model, variant, count in sample_counts
@@ -676,7 +746,7 @@ def render_case(case, suite, skill_hash, scenario_hash):
         <span class="entity-label"><a class="entity-id" href="#case-{case['id'].lower()}">{case['id']}</a> · Case</span><h1>{escape(case['name'])}</h1>
         <section><h2>Case instructions</h2><div class="instructions">{escape(results[0]['input'] if results else 'Unavailable')}</div></section>
         <div class="facts"><span>{escape(comparison_copy)}</span><span>{len(results)} scenario results</span><span>With skill vs No skill</span></div>
-        <section class="provenance"><h2>Samples and current-tree provenance</h2><div class="facts">{sample_summary}</div>{warning}<p><code>skill_hash={escape(skill_hash)}</code> · <code>scenario_hash={escape(scenario_hash or 'unavailable')}</code></p><p class="caveat">Hashes describe the current working tree at report time. This result file has no historical content hashes, so the evaluated skill and scenarios cannot be verified against them.</p></section>
+        <section class="provenance"><h2>Samples and current-tree provenance</h2><div class="facts">{sample_summary}</div>{warning}<p>Current working tree: <code>skill_hash={escape(skill_hash)}</code> · <code>scenario_hash={escape(scenario_hash or 'unavailable')}</code></p><p class="caveat">Results collected under other hashes are labelled with the version they came from and are never pooled with the current tree's sample. Results that predate content hashes cannot be verified against them.</p></section>
         <h2>Aggregate impact</h2><div class="impact-grid">{aggregate_impact(results)}</div>
         <h2>Quality</h2><p>Positive effects mean the skill improved the measure. Aggregate values pair each model and repeat before summarizing.</p>{aggregate_table(results, quality_specs)}
         <h2>Overhead</h2><p>Positive effects mean the skill reduced operational overhead.</p>{aggregate_table(results, overhead_specs)}
@@ -780,6 +850,7 @@ def render(sources, saved):
         for suite in suites
         if suite["name"] in SCENARIO_FILES
     }
+    attribute_versions(results, provenance, skill_hash, scenario_hashes)
     saved_iso = saved.isoformat(timespec="seconds")
     saved_text = saved.strftime("%d %b %Y, %H:%M:%S %Z")
     # Nothing is embedded: the pooled runs are already files on disk, and inlining

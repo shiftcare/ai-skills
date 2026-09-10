@@ -253,13 +253,30 @@ def test_a_changed_skill_renders_as_a_labelled_before_and_after(tmp_path):
     before = run["testCases"][:2]
     after = json.loads(json.dumps(before))
     after[0]["metadata"]["skillHash"] = "9ab3c1de0000"
-    run["testCases"] = before + after
-
-    _, _, page = write_report(tmp_path, run)
-    visible = visible_html(page)
+    # Two run files, as two working trees produce: the no-skill control in each
+    # file has no hash of its own and is attributed to the skill it ran beside.
+    paths = []
+    for name, cases in (("before", before), ("after", after)):
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps({"testCases": cases}))
+        paths.append(str(path))
+    output = tmp_path / "report.html"
+    main([*paths, "-o", str(output)])
+    visible = visible_html(output.read_text())
+    overview = visible.split('id="overview-view"', 1)[1].split('id="comparisons-view"', 1)[0]
+    detail = visible.split('id="case-panel-c1"', 1)[1]
 
     assert "skill 02d2fa320000" in visible
     assert "skill 9ab3c1de0000" in visible
+    # Each version gets its own roll-up and its own sample: n restarts at 1 for
+    # the edited skill instead of pooling with the five-or-so results before it.
+    assert overview.count('<section class="version">') == 2
+    assert overview.count("<strong>1</strong> paired comparisons") == 2
+    assert "invented-model · skill 9ab3c1de0000 · scenarios 2a151f81f9e7 · With skill: <strong>n=1</strong>" in detail
+    assert "invented-model · skill 9ab3c1de0000 · scenarios 2a151f81f9e7 · No skill: <strong>n=1</strong>" in detail
+    # The no-skill control from each run belongs to that run's skill, so nothing
+    # is left over to report as an unavailable comparison.
+    assert "comparison unavailable" not in detail.split("<h2>Scenario results</h2>", 1)[0]
 
 
 def test_report_summarizes_repeated_quality_before_overhead(tmp_path):

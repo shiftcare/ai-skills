@@ -46,7 +46,7 @@ for i in 1 2 3 4 5; do ./evals/run.sh; done
 
 To repeat a run, loop it. Each run archives its own file in `runs/` and the report pools them, so five runs give five paired comparisons per model rather than overwriting each other. There is no repeat counter to keep in step: the report pairs the with-skill and no-skill arms of a group in order, so appending a sixth run later simply adds a sixth comparison.
 
-Results pool only where they are comparable. Every result carries a `scenarioHash` over the suite's `CASES` and a `skillHash` over the installed skill's files, both taken from the working tree so uncommitted edits count. Editing a prompt or a rubric changes the scenario hash and separates the new results from the old; editing the skill mid-accumulation renders as a labelled before/after comparison rather than averaging two different skills together.
+Results pool only where they are comparable. Every result carries a `scenarioHash` over the suite's `CASES` and a `skillHash` over the installed skill's files, both taken from the working tree so uncommitted edits count. Editing a prompt or a rubric changes the scenario hash and separates the new results from the old; editing the skill mid-accumulation renders as a labelled before/after comparison rather than averaging two different skills together. Each version gets its own roll-up and sample counts, with the current working tree first, so `n` restarts at zero after an edit. A run's no-skill results count as the control for whichever skill version ran beside them in that file. Results archived before hashes existed are labelled as unverified.
 
 Runs use four parallel workers by default. Set `EVAL_WORKERS` to tune concurrency:
 
