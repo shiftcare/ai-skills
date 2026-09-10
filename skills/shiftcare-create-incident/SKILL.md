@@ -103,16 +103,23 @@ The `list_clients` row already carries `ndis_number`, `type`, `age_care_recipien
 those are empty, and read fund names and `payment_type`. Funds are the account's own labels, so
 treat them as a hint, not a fact.
 
-Then confirm in one line, naming the evidence:
+**One clear signal → state it and carry on**, in one line the user can correct, naming the
+evidence:
 
-> This client has an NDIS number and Self Managed funding, so I'll treat this as **NDIS**
-> disability supports for the reportability check — right? (Other options: aged care / home
-> care under SIRS, or your own policy.)
+> This client has an NDIS number and Self Managed funding, so I'm treating this as **NDIS**
+> disability supports for the reportability check. Say so if that's wrong.
 
-Both signals present, or none → ask the open question with the three choices. The user's
-answer wins over the record every time; "we're an NDIS provider" said earlier is an answer.
-Read only the reference section for the confirmed framework, and quote its caveat to the user
-verbatim before you rely on it.
+**Mixed signals, or none → you are not sure, so ask.** Most ShiftCare services are NDIS
+disability supports or aged care / home care, so lead with those two and keep the third as the
+fallback:
+
+> I can't tell from the client's record which framework applies. Is this **NDIS** disability
+> supports, **aged care / home care** (Serious Incident Response Scheme), or **other / your own
+> policy**?
+
+The user's answer wins over the record every time; "we're an NDIS provider" said earlier is an
+answer and needs no confirmation. Read only the reference section for the framework you
+settled on, and quote its caveat to the user verbatim before you rely on it.
 
 ## Step 3 — Check for an existing incident
 
