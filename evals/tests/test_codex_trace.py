@@ -46,3 +46,38 @@ def test_parse_codex_events():
 
 def test_codex_cost_is_unavailable_without_a_completed_turn():
     assert parse_events([])["usage"]["costUsd"] is None
+
+
+def test_codex_restricts_mcp_tools_to_the_shared_allowlist(monkeypatch, tmp_path):
+    """Codex's `-s read-only` sandboxes shell commands, not MCP calls, so without
+    an explicit allowlist the Codex arm could call any tool the server exposes.
+    Verified against the live server: the agent enumerates exactly these tools and
+    reports anything else as unavailable."""
+    import json as json_module
+    import subprocess as subprocess_module
+    from pathlib import Path as PathType
+
+    from runners import codex
+
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = tmp_path / "with-skill"
+    workspace.mkdir()
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return subprocess_module.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(codex.subprocess, "run", fake_run)
+    codex.run("Invented prompt", "invented-model", str(workspace),
+              {"url": "https://invented.example/mcp", "token": "invented-token"})
+
+    allowlist = json_module.loads((PathType(codex.__file__).parents[1] / "read_tools.json").read_text())
+    setting = next(
+        argument for argument in captured["command"]
+        if argument.startswith("mcp_servers.shiftcare.enabled_tools=")
+    )
+
+    assert json_module.loads(setting.split("=", 1)[1]) == allowlist
+    assert "check_skill_compatibility" in allowlist

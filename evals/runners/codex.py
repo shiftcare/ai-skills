@@ -3,6 +3,13 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+
+# The same allowlist the Claude runner enforces. Codex's `-s read-only` sandboxes
+# model-generated shell commands, not MCP tool calls, so without this the Codex
+# arm can call any tool the server exposes, writes included.
+READ_TOOLS = json.loads((Path(__file__).parents[1] / "read_tools.json").read_text())
 
 
 def parse_events(lines):
@@ -98,6 +105,8 @@ def run(prompt, model, cwd, mcp):
                 'mcp_servers.shiftcare.bearer_token_env_var="MCP_TOKEN"',
                 "-c",
                 'mcp_servers.shiftcare.http_headers={ Accept = "application/json, text/event-stream" }',
+                "-c",
+                f"mcp_servers.shiftcare.enabled_tools={json.dumps(READ_TOOLS)}",
             ]
         )
         env["MCP_TOKEN"] = mcp["token"]
