@@ -178,8 +178,8 @@ a record drafted this way reads like every other record in the register.
 | **Severity → Category** | ShiftCare categories are `category_1` to `category_5`, labelled Category 1–5; **what they mean is the organisation's own scheme**. ShiftCare's AI assistant maps severity high → Category 1, moderate → Category 2, low → Category 3, and Category 1 notifies the responsible team lead. Propose that mapping and ask the user to confirm or override it against their own scheme. |
 | **NDIS report status** | `reportable` or `reported`. It records **whether the NDIS Commission has been notified**; `reportable` is the default and means "not yet reported". Set `reported` only when the user confirms the notification has actually been made. **This field notifies nobody.** For a non-NDIS service leave it at the default and say the field does not apply. |
 | **Status** | A new incident is `open`. Do not offer `in_progress`, `resolved` or `closed` on create. |
-| **Private** | A private incident is visible only to its creator, its assignee and roles with view-private permission — including other users of this agent. Ask; do not assume either way. Say what it hides. |
-| **Assignee, due date** | Optional. Ask for both in one line. |
+| **Private** | **Not private unless the user asks for it.** Do not ask. A private incident is visible only to its creator, its assignee and roles with view-private permission — including other users of this agent — so when they do ask, say what it hides. |
+| **Assignee, due date** | Both optional. **Leave the due date unset unless the user gives one**; do not ask for it. Ask for the assignee in one line only if the user has not named who owns the follow-up. |
 | **Clients, involved staff** | The ids from Step 1. |
 
 **Then the reportability check.** Against the chosen framework's table in the reference file,
@@ -206,7 +206,7 @@ Ready to create this incident:
   Name:          Fall in bathroom during shower, hip struck bath edge
   Client:        Mary Chen (client id 12345)
   Involved staff: Tom Ferreira (user id 67890)
-  Assignee:      not set          Due date: not set
+  Assignee:      not set          Due date: not set (none given)
   Priority:      high             Severity: moderate → Category 2 (confirm against your scheme)
   NDIS report:   reportable (not yet notified)
   Private:       no
