@@ -1,10 +1,10 @@
 ---
 name: shiftcare-onboarding-check
-description: Check whether a ShiftCare account is set up properly and report a setup scorecard with the next step for each gap. Covers clients, staff, pay groups, pay items, first shift, qualifications, shift types, locations, and teams. Distinguishes the sample data every new account is created with from data a person actually entered. Use when the user is new to ShiftCare, asks "is my account set up", "what is left to set up", or wants an onboarding checklist. Read-only.
+description: Check whether a ShiftCare account is set up properly and report a setup scorecard with the next step for each gap. Covers clients, staff, pay groups, pay items, first shift, qualifications, shift types, forms, locations, and teams. Distinguishes the sample data every new account is created with from data a person actually entered. Use when the user is new to ShiftCare, asks "is my account set up", "what is left to set up", or wants an onboarding checklist. Read-only.
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "2.5.3"
+  version: "2.6.0"
 ---
 
 # ShiftCare onboarding check
@@ -141,6 +141,7 @@ the more useful thing to tell the user.
 | 10 | A shift invoiced | `list_invoices`, then `list_invoiceable_items` for the same period | At least one invoice exists | No invoices. If `list_invoiceable_items` returns a non-zero `estimated_total` while `list_invoices` is empty, say so plainly: there is billable work sitting uninvoiced |
 | 11 | Progress notes | `list_progress_notes` | A note on a client that is not seeded, or written by someone other than the owner, or created outside the seeding burst | Around ten notes, all on the seeded demo client, all authored by the registered owner, all sharing one created-at second, all on the Care Signals demo shift |
 | 12 | Teams (optional) | `list_teams` | Any team | Never seeded, so zero means genuinely none. Fine to leave empty |
+| 13 | Forms | `list_form_responses`, `include_metadata` true, `per_page` 3; plus `list_forms` where that tool is present | A submitted response: it names the `form_id` and `form_name` of a published form somebody built or published **and** filled in. Where `list_forms` exists, a **published** form counts on its own — sign-up clones the template library as **draft**, and `list_forms` returns published forms only, so anything it returns was published by a person. Report an `incident` form separately — submitting one is what opens an incident ticket | No responses visible, and either no `list_forms` or it returns nothing. Both tools absent → **Cannot check** |
 
 **Row 9 matters most, and it has two sources.** Prefer `list_timesheets`: each timesheet
 can carry `shift_id`, `status`, `clockin_at`, `clockout_at` and the two clocking locations,
@@ -169,6 +170,23 @@ named `list_client_notes` on some servers; use whichever is present. Customers c
 progress notes, shift notes, client notes or communications, and **in the US usually care
 notes** — mirror the user's own word back in the report.
 
+**Row 13 has two sources, and the tool list decides which you have.** `list_form_responses`
+is the one most servers expose: each row carries `form_id`, `form_name`, `responder_type` and
+`status`, so one response proves a published form exists and has been used — that is the
+follow-through signal, and the strongest Done. `list_forms` lists the definitions themselves
+and is exposed on fewer servers; where you have it, send `form_type` explicitly — `general`,
+then `incident` — because the unfiltered list also returns types no filter can select, and the
+template library comes back mixed in with real forms with nothing to tell them apart. A
+published template still counts: someone chose to publish it. `get_form` reads one form's
+questions and is not needed here.
+
+Two scoping traps make an empty result weak evidence. Responses to a form with **Private
+Responses** on — the default for a new form — are visible only to an admin, so a coordinator
+credential can see none of them. And form visibility runs through the account's Manage Forms
+policy. Report "no submissions visible to this credential" rather than "no forms", and when
+`list_forms` is absent say plainly that a published form nobody has filled in yet would not
+show.
+
 **Incidents are a capability, not a milestone.** `list_incidents` works, and zero incidents
 is a good sign rather than a gap — never score it and never put it under "Remaining", which
 would read as "go and have an incident". But do surface it: most new accounts do not know
@@ -186,15 +204,8 @@ If a tool returns an error or "not found", report that row as **Cannot check**, 
 
 Say so plainly instead of guessing:
 
-- **Forms.** Not scorable, and the reason is structural rather than a permission you can
-  turn on. `GET /v3/forms` and `GET /v3/forms/{id}` exist in the API, but neither is opted
-  in as an MCP tool, so no forms tool is published on any regional server — there is
-  nothing to call. Three further things would still block the check if it were: the forms
-  entity marks nothing as a template or as seeded, so a cloned template and a hand-built
-  form are indistinguishable; seeded templates are written with status **draft** while that
-  endpoint lists **published** by default, so the seeded set would not even appear; and the
-  seeded template names live in a seed account's database rather than in any config, so
-  there is no canonical list to compare against. Ask the user instead of scoring it.
+- **Forms, on a server without `list_forms`.** The tool is gated per server and per account.
+  Where it is absent, row 13 is **Cannot check**; ask the user instead of scoring it.
 - **Job board.** Sign-up seeds three postings — **Sample Morning Shift**, **Sample
   Afternoon Shift**, **Sample Evening Shift** — at the region's sample address with the
   description "Please add instructions here for your carers". There is a
@@ -238,8 +249,9 @@ user for a listing they cannot see.
 | 8 Real shift booked | 10 | Follow-through, 40 |
 | 9 Shift worked, clocked in and out | 15 | |
 | 10 Shift invoiced | 15 | |
-| 11 Progress notes | 3 | Extras, 5 |
-| 12 Teams | 2 | |
+| 11 Progress notes | 2 | Extras, 5 |
+| 12 Teams | 1 | |
+| 13 Forms | 2 | |
 
 Report it as a band with the number alongside:
 
@@ -287,6 +299,7 @@ Finished rows get a dash. Use these, adjusted to what the account is missing:
 | Invoice it | Generate an invoice for the shift once it has been worked |
 | Progress notes | Write a progress note against a shift — what happened, and any follow-up |
 | Teams | Create a team and add staff and clients to it |
+| Forms | Publish the incident report template, or a checklist your carers will fill in, from Forms |
 
 **Whenever the report suggests creating a pay group, pay items, or a price book, attach
 this note.** It is the most common way a new account ends up with shifts that will not
@@ -315,8 +328,8 @@ whatever the checks turned up as untouched, plus the ones no tool can score:
   knowing it is there before the first one happens.
 - **Job board.** Advertise an unfilled shift to your carers and let them claim it. Sign-up
   leaves three sample postings behind as examples.
-- **Forms.** The account comes with a set of form templates for assessments and checklists,
-  ready to publish or adapt.
+- **Forms.** When row 13 found nothing published: the account comes with a set of form
+  templates for assessments, checklists and incident reports, ready to publish or adapt.
 - **Care plans, progress notes, teams, qualifications** — pull in whichever of these the
   checks showed as untouched, described as a capability rather than a gap.
 
@@ -338,6 +351,7 @@ Only the remaining rows, in Quick Start order, each with its help article:
 | Invoicing | [Quick Start Guide](https://help.shiftcare.com/en/articles/4293063-quick-start-guide), invoicing section |
 | Progress notes | Have a carer write a note against a real shift |
 | Teams | [Teams](https://help.shiftcare.com/en/articles/3022481-teams) |
+| Forms | [Creating and Managing Custom Forms](https://help.shiftcare.com/en/articles/9382119-creating-and-managing-custom-forms) |
 
 Example of the tone to use:
 
