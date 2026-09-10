@@ -1,6 +1,6 @@
 ---
 name: shiftcare-create-incident
-description: Turn a report of something that went wrong during care into a ShiftCare incident record — a fall, a medication error, an injury, aggression, a missing client, alleged abuse or neglect, a restrictive practice, a near miss. Use for "raise an incident for Mary", "Tom says the client fell in the shower, get it in the system", "is this a reportable incident?", "write up Tuesday's fall as an incident". Asks which framework applies (NDIS, Australian aged care or home care under SIRS, or the organisation's own policy) and flags when the facts may be a reportable incident with a regulator deadline. Drafts the record in the shape ShiftCare's incident form expects, checks for an existing incident, writes once on confirmation — or, when the connection has no incident-create tool (the common case today), hands over a ready-to-enter record — then offers corrective action items against it. Never files a note or complaint in place of an incident, never notifies a regulator. Writes data; never without confirmation.
+description: Turn a report of something that went wrong during care into a ShiftCare incident record — a fall, a medication error, an injury, aggression, a missing client, abuse or neglect, a restrictive practice, a near miss. Use for "raise an incident for Mary", "Tom says the client fell in the shower, get it in the system", "is this a reportable incident?", "write up Tuesday's fall as an incident". Reads the framework off the client's funding (NDIS, aged care or home care under SIRS, or own policy), confirms it, and flags a possible reportable incident and its regulator deadline. Drafts the record in the shape ShiftCare's incident form expects, checks for an existing incident, writes once on confirmation — or, when the connection has no incident-create tool (the common case today), hands over a ready-to-enter record — then offers corrective action items against it. Never files a note or complaint in place of an incident, never notifies a regulator. Writes data; never without confirmation.
 license: Apache-2.0
 metadata:
   author: shiftcare
@@ -63,23 +63,7 @@ exposed per tool and per account, independently of those flags.
 If ShiftCare tools are missing entirely, that is a connection problem: use the
 `shiftcare-mcp` skill.
 
-## Step 1 — Ask which framework applies
-
-One question, with the choices offered, before anything else:
-
-> Which framework does this service work under? **NDIS** disability supports, **aged care or
-> home care** (Serious Incident Response Scheme), or **other / your own policy**?
-
-The answer decides which reportability table in
-[references/reportable-incidents.md](references/reportable-incidents.md) you read, and what
-you say in Step 5. Read only the section for the chosen framework, and quote its caveat to the
-user verbatim before you rely on it. If the account clearly works under more than one, ask
-which one this participant's supports fall under; the answer is per client, not per account.
-
-Skip the question only when the user has already told you — "we're an NDIS provider" is an
-answer.
-
-## Step 2 — Resolve the people
+## Step 1 — Resolve the people
 
 - **Client(s)** → `list_clients` with `filter_by_name`. The match is **partial** ("Sam"
   matches Samantha): exactly one match → use it; several → show them and ask, never pick the
@@ -99,6 +83,36 @@ capped at notes created in the last 90 days and filtered to what this user may s
 you find nothing. If the named worker is not on the client's shift for that time, say so in one
 line and ask who was actually there before drafting — the record attributes the account to a
 person, so it has to be the right one. Do not block on it if the user confirms the name.
+
+## Step 2 — Work out the framework from the client's funding, then confirm it
+
+The framework decides which reportability table in
+[references/reportable-incidents.md](references/reportable-incidents.md) you read and what you
+say in Step 5. It is per client, not per account: one provider can support NDIS participants
+and home-care clients side by side. So read it off the client you just resolved rather than
+asking cold. Price books are not exposed over MCP; the client record and its funds are.
+
+| Signal on the resolved client | Suggests |
+| --- | --- |
+| `ndis_number` present; `type` or a fund `payment_type` naming NDIS (Agency, Plan or Self Managed) | **NDIS** disability supports |
+| `client_agecare_service_agreements` with `type` `home_care_package` or `support_at_home`; `age_care_recipient_id` present; a fund named for HCP or Support at Home | **Aged care / home care** under SIRS |
+| `nhs_number`, `medicaid_id`, or no Australian funding signal at all | **Other / the organisation's own policy** |
+
+The `list_clients` row already carries `ndis_number`, `type`, `age_care_recipient_id` and
+`client_agecare_service_agreements`. Call `list_client_funds` with the `client_id` only when
+those are empty, and read fund names and `payment_type`. Funds are the account's own labels, so
+treat them as a hint, not a fact.
+
+Then confirm in one line, naming the evidence:
+
+> This client has an NDIS number and Self Managed funding, so I'll treat this as **NDIS**
+> disability supports for the reportability check — right? (Other options: aged care / home
+> care under SIRS, or your own policy.)
+
+Both signals present, or none → ask the open question with the three choices. The user's
+answer wins over the record every time; "we're an NDIS provider" said earlier is an answer.
+Read only the reference section for the confirmed framework, and quote its caveat to the user
+verbatim before you rely on it.
 
 ## Step 3 — Check for an existing incident
 
@@ -159,7 +173,7 @@ a record drafted this way reads like every other record in the register.
 | **Status** | A new incident is `open`. Do not offer `in_progress`, `resolved` or `closed` on create. |
 | **Private** | A private incident is visible only to its creator, its assignee and roles with view-private permission — including other users of this agent. Ask; do not assume either way. Say what it hides. |
 | **Assignee, due date** | Optional. Ask for both in one line. |
-| **Clients, involved staff** | The ids from Step 2. |
+| **Clients, involved staff** | The ids from Step 1. |
 
 **Then the reportability check.** Against the chosen framework's table in the reference file,
 say in one or two lines whether the facts *may* meet a reportable-incident type, and the
@@ -217,7 +231,7 @@ Create it?
 - **The user declines → write nothing.** Report that nothing was created and stop.
 - **`create_incident` is present:** call `whoami` again first and check `account_id` is the one
   you resolved every id against — a connection can be re-authenticated mid-task with nothing in
-  any response to announce it. If it changed, start again from Step 2. Then call
+  any response to announce it. If it changed, start again from Step 1. Then call
   `create_incident` **exactly once** and never blindly retry a create. If the result is
   unclear, read first — `list_incidents` with today's date and the name as `search_text` —
   then decide. Report the new incident's `id`. The active tool schema is authoritative for field
