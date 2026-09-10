@@ -3,6 +3,9 @@ from deepeval.metrics import GEval, ToolCorrectnessMetric
 from deepeval.test_case import LLMTestCase, SingleTurnParams, ToolCall
 import pytest
 
+from pathlib import Path
+
+from identity import cases_hash, skill_hash
 from judge import ClaudeJudge
 from metrics import (
     ConnectionProtocol,
@@ -45,7 +48,7 @@ CASES = [
 
 @pytest.mark.parametrize("skill", ["shiftcare-mcp", None], ids=["with-skill", "no-skill"])
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
-def test_connection(case, skill, model, repeat, mcp, workspaces):
+def test_connection(case, skill, model, mcp, workspaces):
     cwd = workspaces["with-skill" if skill else "no-skill"]
     result = run_agent(case["ask"], model, cwd, skill, mcp)
     tool_calls = result["toolCalls"]
@@ -60,7 +63,8 @@ def test_connection(case, skill, model, repeat, mcp, workspaces):
             "suite": "Connection verification",
             "case": case["name"],
             "model": model,
-            "repeat": repeat,
+            "skillHash": skill_hash(skill),
+            "scenarioHash": cases_hash(Path(__file__)),
             "skillVariant": "With skill" if skill else "No skill",
             "usage": result["usage"],
             "durationMs": result["durationMs"],

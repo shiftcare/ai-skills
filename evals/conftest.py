@@ -36,23 +36,10 @@ def env_value(name):
     return None
 
 
-def repeat_count(value):
-    try:
-        count = int(value or "1")
-    except (TypeError, ValueError):
-        raise ValueError("EVAL_REPEATS must be a positive integer") from None
-    if count < 1:
-        raise ValueError("EVAL_REPEATS must be a positive integer")
-    return count
-
-
 def pytest_generate_tests(metafunc):
     if "model" in metafunc.fixturenames:
         models = [model.strip() for model in os.getenv("EVAL_MODELS", DEFAULT_MODELS).split(",")]
         metafunc.parametrize("model", [model for model in models if model])
-    if "repeat" in metafunc.fixturenames:
-        count = repeat_count(os.getenv("EVAL_REPEATS"))
-        metafunc.parametrize("repeat", range(1, count + 1), ids=lambda value: f"repeat-{value}")
 
 
 @pytest.fixture(scope="session")

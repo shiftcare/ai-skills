@@ -48,6 +48,8 @@ def invented_run():
                 "case": "connect and verify",
                 "model": "invented-model",
                 "skillVariant": variant,
+                "skillHash": "02d2fa320000" if variant == "With skill" else "none",
+                "scenarioHash": "2a151f81f9e7",
                 "usage": {
                     "inputTokens": tokens - 10,
                     "outputTokens": 10,
@@ -192,14 +194,13 @@ def test_report_renders_unavailable_rows_for_models_in_mixed_case(tmp_path):
     assert "comparison unavailable" in per_model
 
 
-def test_report_pairs_repeats_independently(tmp_path):
+def test_report_pairs_repeated_runs_by_arm_order(tmp_path):
+    """Occurrence is derived by zipping each arm rather than assigned at
+    collection time, which is what makes a later run append samples instead of
+    colliding with the first run's repeat 1."""
     run = invented_run()
     first_pair = run["testCases"][:2]
     second_pair = json.loads(json.dumps(first_pair))
-    for result in first_pair:
-        result["metadata"]["repeat"] = 1
-    for result in second_pair:
-        result["metadata"]["repeat"] = 2
     second_pair[0]["metadata"]["usage"]["totalTokens"] = 300
     second_pair[1]["metadata"]["usage"]["totalTokens"] = 150
     run["testCases"] = first_pair + second_pair
@@ -210,16 +211,37 @@ def test_report_pairs_repeats_independently(tmp_path):
 
     assert "<strong>2</strong> paired comparisons" in visible
     assert "2 paired model comparisons" in detail
-    assert "invented-model · repeat 1" in visible
-    assert "invented-model · repeat 2" in visible
     assert "100 / 200" in detail
     assert "300 / 150" in detail
 
 
-def test_normalize_defaults_legacy_results_to_repeat_one():
-    results, _ = normalize(invented_run()["testCases"])
+def test_surplus_results_on_one_arm_are_reported_not_dropped(tmp_path):
+    run = invented_run()
+    with_skill, no_skill = run["testCases"][:2]
+    extra = json.loads(json.dumps(with_skill))
+    run["testCases"] = [with_skill, no_skill, extra]
 
-    assert {result["repeat"] for result in results} == {1}
+    _, _, page = write_report(tmp_path, run)
+    visible = visible_html(page)
+
+    assert "<strong>1</strong> paired comparisons" in visible
+    assert "comparison unavailable" in visible
+
+
+def test_a_changed_skill_renders_as_a_labelled_before_and_after(tmp_path):
+    """A mixed skill hash is a finding, not an error: it means the skill changed
+    mid-accumulation, so the two must not be averaged together."""
+    run = invented_run()
+    before = run["testCases"][:2]
+    after = json.loads(json.dumps(before))
+    after[0]["metadata"]["skillHash"] = "9ab3c1de0000"
+    run["testCases"] = before + after
+
+    _, _, page = write_report(tmp_path, run)
+    visible = visible_html(page)
+
+    assert "skill 02d2fa320000" in visible
+    assert "skill 9ab3c1de0000" in visible
 
 
 def test_report_summarizes_repeated_quality_before_overhead(tmp_path):

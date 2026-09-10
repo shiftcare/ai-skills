@@ -1,13 +1,13 @@
 import argparse
-import ast
 import datetime
-import hashlib
 import html
 import json
 import os
 import pathlib
 import random
 import statistics
+
+from identity import NO_SKILL, cases_hash, directory_hash
 
 
 DEFAULT_INPUT = ".deepeval/.latest_run_full.json"
@@ -130,7 +130,12 @@ def normalize(raw_results):
             "suite": suite,
             "case": case,
             "model": model,
-            "repeat": metadata.get("repeat", 1),
+            # Results predating the hashes carry neither field; NO_SKILL and a
+            # literal mark them as one legacy group rather than crashing.
+            "skill_hash": metadata.get(
+                "skillHash", NO_SKILL if variant == "No skill" else "legacy"
+            ),
+            "scenario_hash": metadata.get("scenarioHash", "legacy"),
             "variant": variant,
             "input": first(raw, "input", default="Unavailable"),
             "output": first(raw, "actualOutput", "actual_output", default="Unavailable"),
@@ -170,31 +175,6 @@ def normalize(raw_results):
     return results, suites
 
 
-def directory_hash(directory):
-    digest = hashlib.sha256()
-    for path in sorted(path for path in directory.rglob("*") if path.is_file()):
-        digest.update(path.relative_to(directory).as_posix().encode())
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()[:12]
-
-
-def cases_hash(path):
-    tree = ast.parse(path.read_text(), filename=str(path))
-    for statement in tree.body:
-        if isinstance(statement, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "CASES"
-            for target in statement.targets
-        ):
-            cases = ast.literal_eval(statement.value)
-            canonical = json.dumps(
-                cases, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-            )
-            return hashlib.sha256(canonical.encode()).hexdigest()[:12]
-    raise ValueError(f"CASES not found in {path}")
-
-
 def pairs_for(results):
     return [
         (with_skill, no_skill)
@@ -204,27 +184,55 @@ def pairs_for(results):
 
 
 def comparisons_for(results):
+    """Pair with-skill and no-skill results by zipping each model's arms in order.
+
+    Occurrence is derived here rather than assigned at collection time, which is
+    what makes runs appendable: a later run adds rows to the same group and the
+    pair count rises, with no counter to keep in step. Surplus results on either
+    side are reported as unavailable comparisons rather than silently dropped.
+
+    Results are grouped by (model, skill_hash of the with-skill arm) so a skill
+    edited mid-accumulation renders as a labelled before/after rather than
+    averaging two different skills together.
+    """
     comparisons = []
-    identities = []
-    for result in results:
-        identity = (result["model"], result["repeat"])
-        if identity not in identities:
-            identities.append(identity)
-    for model, repeat in identities:
-        with_skill = next(
-            (result for result in results if (result["model"], result["repeat"]) == (model, repeat) and result["variant"] == "With skill"),
-            None,
-        )
-        no_skill = next(
-            (result for result in results if (result["model"], result["repeat"]) == (model, repeat) and result["variant"] == "No skill"),
-            None,
-        )
-        comparisons.append((model, repeat, with_skill, no_skill))
+    for model in dict.fromkeys(result["model"] for result in results):
+        arms = {
+            variant: [
+                result
+                for result in results
+                if result["model"] == model and result["variant"] == variant
+            ]
+            for variant in ("With skill", "No skill")
+        }
+        for hash_value in dict.fromkeys(
+            result["skill_hash"] for result in arms["With skill"]
+        ) or [None]:
+            with_skill = [
+                result for result in arms["With skill"] if result["skill_hash"] == hash_value
+            ]
+            # The no-skill arm has no skill to hash, so it is shared across the
+            # with-skill hashes rather than split by them.
+            no_skill = arms["No skill"]
+            for index in range(max(len(with_skill), len(no_skill))):
+                comparisons.append((
+                    model,
+                    hash_value,
+                    with_skill[index] if index < len(with_skill) else None,
+                    no_skill[index] if index < len(no_skill) else None,
+                ))
     return comparisons
 
 
-def comparison_label(model, repeat, results):
-    return f"{model} · repeat {repeat}" if len({result["repeat"] for result in results}) > 1 else model
+def comparison_label(model, skill_hash_value, results):
+    hashes = {
+        result["skill_hash"]
+        for result in results
+        if result["variant"] == "With skill" and result["skill_hash"] != NO_SKILL
+    }
+    if len(hashes) > 1 and skill_hash_value:
+        return f"{model} · skill {skill_hash_value}"
+    return model
 
 
 def number(value, kind="number"):

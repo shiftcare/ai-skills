@@ -4,16 +4,17 @@ from importlib import import_module
 import pytest
 
 import conftest
+import identity
 from runners.codex import parse_events
 
 
-def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None, repeat=1):
+def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None):
     module = import_module(module_name)
     captured = []
     monkeypatch.setattr(module, "run_agent", lambda *args, **kwargs: result)
     monkeypatch.setattr(module, "assert_test", lambda case, metrics, **kwargs: captured.append((case, metrics, kwargs)))
     kwargs = dict(
-        case=module.CASES[case_index], model="invented-model", repeat=repeat, mcp=None,
+        case=module.CASES[case_index], model="invented-model", mcp=None,
         workspaces={"with-skill": "/with-skill", "no-skill": "/no-skill"},
     )
     if module_name == "test_connection":
@@ -30,17 +31,6 @@ def test_mcp_fixture_resolves_per_test():
     `auth.mjs token` reuses a token with more than 30 seconds left, so the
     cost is one subprocess call, not an OAuth round trip."""
     assert conftest.mcp._fixture_function_marker.scope == "function"
-
-
-@pytest.mark.parametrize(("value", "expected"), [(None, 1), ("5", 5)])
-def test_repeat_count_accepts_positive_integers(value, expected):
-    assert conftest.repeat_count(value) == expected
-
-
-@pytest.mark.parametrize("value", ["0", "-1", "no"])
-def test_repeat_count_rejects_non_positive_integers(value):
-    with pytest.raises(ValueError, match="^EVAL_REPEATS must be a positive integer$"):
-        conftest.repeat_count(value)
 
 
 @pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])
@@ -140,16 +130,25 @@ def test_account_identity_uses_whoami_without_connection_protocol(monkeypatch):
 
 
 @pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])
-def test_scenarios_record_repeat(monkeypatch, module_name):
+@pytest.mark.parametrize("skill", ["shiftcare-mcp", None])
+def test_scenarios_record_content_hashes(monkeypatch, module_name, skill):
+    """These replace `repeat` as pairing identity: they decide which results are
+    comparable, so a later run appends samples instead of colliding."""
     result = {
         "answer": "Invented answer", "toolCalls": [],
         "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
         "durationMs": 1, "turns": 1,
     }
 
-    case, _, _ = capture_scenario(monkeypatch, module_name, result, repeat=5)
+    case, _, _ = capture_scenario(monkeypatch, module_name, result, skill=skill)
 
-    assert case.metadata["repeat"] == 5
+    assert case.metadata["scenarioHash"] == identity.cases_hash(f"{module_name}.py")
+    if skill:
+        assert case.metadata["skillHash"] == identity.skill_hash(skill)
+    else:
+        # The no-skill arm has no skill to hash; a real hash there would split
+        # every pair, since the arms would never share an identity.
+        assert case.metadata["skillHash"] == identity.NO_SKILL
 
 
 @pytest.mark.parametrize("module_name", ["test_tasks", "test_connection"])
