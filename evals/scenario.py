@@ -50,14 +50,24 @@ def evaluate(case, skill, model, mcp, workspaces, suite, scenario_file):
     )
     test_case._trace_dict = agent_trace(test_case, tool_calls)
     judge = ClaudeJudge(workspaces)
+    # A boundary case ("fix my connection" asked of a rostering skill) has no
+    # tool whose absence proves failure, so an empty expected_tools skips the
+    # tool check and leaves the judge to score the redirect.
+    tool_correctness = (
+        [
+            ToolCorrectnessMetric(
+                threshold=1,
+                model=judge,
+                async_mode=True,
+                should_exact_match=False,
+                should_consider_ordering=False,
+            )
+        ]
+        if case["expected_tools"]
+        else []
+    )
     metrics = [
-        ToolCorrectnessMetric(
-            threshold=1,
-            model=judge,
-            async_mode=True,
-            should_exact_match=False,
-            should_consider_ordering=False,
-        ),
+        *tool_correctness,
         GEval(
             name="Response quality",
             evaluation_steps=[

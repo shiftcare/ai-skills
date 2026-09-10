@@ -149,6 +149,12 @@ def test_shift_date_is_opt_in_and_relative_to_today(monkeypatch):
     assert metric.expected_date == (date.today() - timedelta(days=1)).isoformat()
 
 
+def test_empty_expected_tools_skips_tool_correctness(monkeypatch):
+    case = {"name": "redirect", "ask": "Fix my connection", "expected_tools": [], "quality": "Redirects."}
+
+    assert "Tool Correctness" not in evaluate_case(monkeypatch, case)
+
+
 def test_team_lookup_case_is_bounded():
     assert {
         "name": "team lookup returns up to five teams",
@@ -222,8 +228,9 @@ def test_discovered_suites_are_structurally_valid():
         assert (identity.PROJECT_ROOT / "skills" / module.SKILL).is_dir()
         for case in module.CASES:
             assert {"name", "ask", "expected_tools", "quality"} <= case.keys()
+            # Empty is allowed: a boundary case has no tool whose absence proves
+            # failure, and scenario.evaluate skips Tool Correctness for it.
             assert isinstance(case["expected_tools"], list)
-            assert case["expected_tools"]
             names.append(case["name"])
         assert len(names) == len(set(names))
     assert len(suite_names) == len(set(suite_names))
