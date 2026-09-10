@@ -25,6 +25,8 @@ SCENARIO_FILES = {
 # The statistical gate is 5% over 80 with-skill samples; at 20 repeats, one
 # observation changes a case/arm rate by no more than five percentage points.
 MIN_CASE_ARM_SAMPLES = 20
+# Rendered tool output is capped per call; see truncated().
+MAX_TOOL_OUTPUT = 4096
 OVERHEAD_KEYS = (
     "input_tokens",
     "output_tokens",
@@ -46,6 +48,22 @@ def pretty(value):
     if value is None:
         return "Unavailable"
     return str(value)
+
+
+def truncated(text, limit=MAX_TOOL_OUTPUT):
+    """Cap a rendered tool output, naming what was withheld and where to find it.
+
+    Tool outputs were 14.9MB of a 24.2MB page, and the distribution is why: the
+    median is 680 bytes but the largest is 510KB, so a handful of list responses
+    dominate. Judge reasons total 0.4MB and are left whole.
+    """
+    if len(text) <= limit:
+        return text
+    withheld = len(text) - limit
+    return (
+        f"{text[:limit]}\n\n[{withheld:,} more characters not shown. "
+        "The complete output is in the archived run file listed under Result data.]"
+    )
 
 
 def first(mapping, *keys, default=None):
@@ -312,7 +330,7 @@ def measure_specs(results):
     return specs
 
 
-def render_overview(suites, all_results):
+def render_overview(suites, all_results, sources_list):
     specs = measure_specs(all_results)
     headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
     rows = []
@@ -355,7 +373,7 @@ def render_overview(suites, all_results):
                 )
     return f"""
     <section id="overview-view" class="matrix-view">
-      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Skill impact overview</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div><button class="download-button" type="button">Download latest run JSON</button></div>
+      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>Skill impact overview</h1><p>Each row pairs the same case and model. Raw values show with skill / no skill.</p></div><details class="sources"><summary>Result data</summary><ul>{sources_list}</ul></details></div>
       <div class="summary-strip"><span><strong>{sum(len(pairs_for(case['results'])) for suite in suites for case in suite['cases'])}</strong> paired comparisons</span><span><strong>{len(all_results)}</strong> scenario results</span></div>
       {render_rollups(suites, all_results)}
       <h2>Case comparisons</h2>
@@ -372,7 +390,7 @@ def cell_class(value, values, higher_is_better):
     return "best" if value == best else "worst" if value == worst else ""
 
 
-def render_all_results(suites, all_results):
+def render_all_results(suites, all_results, sources_list):
     specs = measure_specs(all_results)
     headings = "".join(f"<th>{escape(label)}</th>" for _, label, *_ in specs)
     rows = []
@@ -400,7 +418,7 @@ def render_all_results(suites, all_results):
     pass_rate = (sum(result["success"] for result in all_results) / len(all_results) * 100) if all_results else 0
     return f"""
     <section id="results-view" class="matrix-view" hidden>
-      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>All results</h1><p>Suite and case groups with every persisted value.</p></div><button class="download-button" type="button">Download latest run JSON</button></div>
+      <div class="view-head"><div><span class="entity-label">Evaluation run</span><h1>All results</h1><p>Suite and case groups with every persisted value.</p></div><details class="sources"><summary>Result data</summary><ul>{sources_list}</ul></details></div>
       <div class="summary-strip"><span><strong>{len(all_results)}</strong> scenario results</span><span><strong>{pass_rate:.1f}%</strong> pass rate</span></div>
       <div class="legend"><i class="key best"></i> Best within case <i class="key worst"></i> Worst within case</div>
       <div class="matrix-wrap"><table class="matrix"><thead><tr><th>ID</th><th>Model</th><th>Skill variant</th><th>Result</th>{headings}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>
@@ -539,7 +557,7 @@ def render_result(result):
         arguments = first(tool, "inputParameters", "input", "arguments", default={})
         output = first(tool, "output", "result", default="Unavailable")
         tool_sections.append(
-            f"""<section class="turn tool"><div class="turn-label">Tool call {index}</div><details class="tool-call"><summary>{escape(tool.get('name', 'Unnamed tool'))}</summary><div class="tool-body"><div><strong>Arguments</strong><pre>{escape(pretty(arguments))}</pre></div><div><strong>Output</strong><pre>{escape(pretty(output))}</pre></div></div></details></section>"""
+            f"""<section class="turn tool"><div class="turn-label">Tool call {index}</div><details class="tool-call"><summary>{escape(tool.get('name', 'Unnamed tool'))}</summary><div class="tool-body"><div><strong>Arguments</strong><pre>{escape(pretty(arguments))}</pre></div><div><strong>Output</strong><pre>{escape(truncated(pretty(output)))}</pre></div></div></details></section>"""
         )
     return f"""
       <details id="result-{result['id'].lower()}" class="result-detail">
@@ -649,7 +667,7 @@ def render_case_view(suites, skill_hash, scenario_hashes, provenance):
 STYLE = """
 :root{--ink:#18212b;--muted:#66717d;--rule:#d7dde3;--paper:#fff;--soft:#f4f6f8;--good:#176b45;--bad:#a12b2b;--header:64px;color-scheme:light}
 *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font:14px/1.45 ui-sans-serif,system-ui,sans-serif}a{color:inherit}button{font:inherit}.report-header{position:sticky;top:0;z-index:20;background:#17212b;color:#fff;min-height:var(--header);padding:12px 24px;display:flex;align-items:center;justify-content:space-between}.view-tabs{display:flex;gap:5px}.view-tabs button,.download-button{border:1px solid #89929c;border-radius:5px;background:transparent;color:inherit;padding:8px 12px;cursor:pointer}.view-tabs button.active{background:#fff;color:#17212b}.view-tabs button:focus-visible,.download-button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #efb83d;outline-offset:2px}.saved{color:#d7dde3}.matrix-view{padding:28px}.view-head{display:flex;justify-content:space-between;gap:20px;align-items:start}.view-head h1,.case-panel h1{margin:.2rem 0}.matrix-view .download-button{color:var(--ink)}.summary-strip,.facts{display:flex;gap:24px;flex-wrap:wrap;background:var(--soft);padding:12px;margin:18px 0}.summary-strip span,.facts span{white-space:nowrap}.matrix-wrap{overflow:auto;border:1px solid var(--rule)}table{border-collapse:collapse;width:100%}th,td{padding:9px 11px;border-bottom:1px solid var(--rule);vertical-align:top;text-align:left;white-space:nowrap}th{position:sticky;top:var(--header);background:#e9edf1;z-index:3;color:var(--muted)}td small,.matrix td a+small{display:block;color:var(--muted)}.suite-row td{background:#293746;color:#fff;font-weight:700}.case-row td{background:#e9edf1;font-weight:650}.unavailable td{background:#fff8df}.best{background:#def2e7}.worst{background:#f9dddd}.improved,.pass-text{color:var(--good)}.regressed,.fail-text{color:var(--bad)}.entity-id{font-family:ui-monospace,monospace;font-weight:750}.entity-label,.turn-label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.legend{margin:10px 0}.key{display:inline-block;width:12px;height:12px;margin:0 4px 0 14px}.report-grid{display:grid;grid-template-columns:280px minmax(0,1fr)}aside{border-right:1px solid var(--rule);padding:24px;min-height:calc(100vh - var(--header));background:var(--soft)}aside details{scroll-margin-top:calc(var(--header) + 14px)}aside summary{padding:6px 0}aside summary button{border:0;background:transparent;text-align:left;cursor:pointer;padding:0}aside a{display:block;padding:5px 0 5px 18px;text-decoration:none}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.dot.pass{background:var(--good)}.dot.fail{background:var(--bad)}main{padding:28px;min-width:0}.case-panel,.result-detail{scroll-margin-top:calc(var(--header) + 14px)}.case-panel section{margin:20px 0}.instructions,.message{white-space:pre-wrap;border-left:3px solid #89929c;padding:12px;background:var(--soft)}.metrics{margin:10px 0 24px}.metrics th{top:var(--header)}.matrix-wrap th{top:0}.result-detail{border:1px solid var(--rule);margin:10px 0}.result-detail>summary{display:grid;grid-template-columns:60px 1fr 1fr auto;gap:12px;align-items:center;padding:12px;cursor:pointer}.result-content{padding:0 14px 14px}.turn{margin:12px 0}.tool-call{border:1px solid #c7b8db}.tool-call summary{padding:9px;background:#eee8f5;font-weight:700}.tool-body{display:grid;grid-template-columns:1fr 1fr}.tool-body>div{padding:10px;min-width:0}.tool-body>div+div{border-left:1px solid #c7b8db}pre{overflow:auto;white-space:pre-wrap;margin:.5rem 0 0}.privacy{padding:20px 28px;color:var(--muted);border-top:1px solid var(--rule)}[hidden]{display:none!important}
-.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border:1px solid var(--rule);margin:10px 0 24px}.impact{padding:12px}.impact+.impact{border-left:1px solid var(--rule)}.impact span,.impact strong{display:block}.reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}.warning{padding:12px;border-left:4px solid #b16b00;background:#fff3cd}.caveat{color:var(--muted)}
+.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border:1px solid var(--rule);margin:10px 0 24px}.impact{padding:12px}.impact+.impact{border-left:1px solid var(--rule)}.impact span,.impact strong{display:block}.reason{width:40rem;max-width:40rem;white-space:normal;overflow-wrap:anywhere}.warning{padding:12px;border-left:4px solid #b16b00;background:#fff3cd}.caveat{color:var(--muted)}.sources summary{cursor:pointer;color:var(--muted)}.sources ul{margin:.4rem 0;padding-left:1.1rem}.sources code{overflow-wrap:anywhere}
 @media(max-width:800px){:root{--header:100px}.report-header,.view-head{align-items:start;flex-direction:column}.report-grid{display:block}aside{min-height:0;border-right:0;border-bottom:1px solid var(--rule)}.tool-body{grid-template-columns:1fr}.tool-body>div+div{border-left:0;border-top:1px solid #c7b8db}}
 """
 
@@ -679,13 +697,6 @@ function followFragment() {
 for (const name of views) document.getElementById(name + '-tab').addEventListener('click', () => setView(name));
 for (const link of document.querySelectorAll('[data-case]')) link.addEventListener('click', () => showCase(link.dataset.case));
 for (const link of document.querySelectorAll('[data-view="case"]')) link.addEventListener('click', () => setView('case'));
-for (const button of document.querySelectorAll('.download-button')) button.addEventListener('click', () => {
-  const text = document.getElementById('source-data').textContent;
-  const url = URL.createObjectURL(new Blob([text], {type: 'application/json'}));
-  const link = Object.assign(document.createElement('a'), {href: url, download: 'mcp-eval-results.json'});
-  link.click();
-  URL.revokeObjectURL(url);
-});
 const firstPanel = document.querySelector('[data-case-panel]');
 if (firstPanel) firstPanel.hidden = false;
 window.addEventListener('hashchange', followFragment);
@@ -716,18 +727,19 @@ def render(sources, saved):
     }
     saved_iso = saved.isoformat(timespec="seconds")
     saved_text = saved.strftime("%d %b %Y, %H:%M:%S %Z")
-    # Only the download button reads this, and every pooled run is already a
-    # file in runs/. Embedding the pool would grow the page linearly with it —
-    # 5 archived matrices reached 322MB — so offer the newest run and point at
-    # the rest, rather than duplicating gigabytes into an unopenable page.
-    source_json = json.dumps(sources[-1][1], indent=2, ensure_ascii=False)
-    source_json = source_json.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+    # Nothing is embedded: the pooled runs are already files on disk, and inlining
+    # even the newest one put 40.7MB of a 64.9MB page into a script tag that only
+    # a download button read. The report names the paths instead.
+    sources_list = "".join(
+        f"<li><code>{escape(str(path))}</code> — {count} results</li>"
+        for path, count in provenance
+    )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>MCP evaluation report</title><style>{STYLE}</style></head>
 <body><header class="report-header"><strong>MCP evaluation report</strong><span class="saved">Results saved <time datetime="{saved_iso}">{escape(saved_text)}</time></span><nav class="view-tabs" aria-label="Report views"><button id="overview-tab" class="active" type="button">Overview</button><button id="results-tab" type="button">All results</button><button id="case-tab" type="button">Case detail</button></nav></header>
-{render_overview(suites, results)}{render_all_results(suites, results)}{render_case_view(suites, skill_hash, scenario_hashes, provenance)}
+{render_overview(suites, results, sources_list)}{render_all_results(suites, results, sources_list)}{render_case_view(suites, skill_hash, scenario_hashes, provenance)}
 <p class="privacy">This report contains local evaluation inputs, tool outputs, and judge reasons. Keep it private and do not upload it.</p>
-<script type="application/json" id="source-data">{source_json}</script><script>{SCRIPT}</script></body></html>"""
+<script>{SCRIPT}</script></body></html>"""
 
 
 def input_paths(inputs):

@@ -306,11 +306,9 @@ def test_report_accepts_wrapped_json_and_escapes_dynamic_content(tmp_path):
 
     assert attack not in page
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in visible
-    source_json = page.split('<script type="application/json" id="source-data">', 1)[1].split(
-        "</script>", 1
-    )[0]
-    assert "<" not in source_json
-    assert "\\u003cscript\\u003e" in source_json
+    # The page no longer embeds result JSON, so escaped output is the only place
+    # untrusted content reaches the document.
+    assert 'id="source-data"' not in page
 
 
 def test_report_uses_legacy_names_and_writes_private_file(tmp_path):
@@ -557,3 +555,30 @@ def test_pooled_results_keep_distinct_ids_across_files(tmp_path, report_dirs):
 
     page = next(reports.glob("*.html")).read_text()
     assert 'id="result-r6"' in visible_html(page).lower() or "R6" in visible_html(page)
+
+
+def test_large_tool_output_is_capped_and_says_where_the_rest_is(tmp_path, report_dirs):
+    """Tool outputs were 14.9MB of a 24.2MB page, driven by a few list responses
+    up to 510KB against a 680-byte median."""
+    run = invented_run()
+    run["testCases"][0]["toolsCalled"] = [
+        {"name": "list_clients", "inputParameters": {}, "output": "x" * 200_000}
+    ]
+
+    _, _, page = write_report(tmp_path, run)
+
+    assert "x" * 200_000 not in page
+    assert "195,904 more characters not shown" in page
+    assert "archived run file listed under Result data" in page
+
+
+def test_small_tool_output_is_left_whole(tmp_path, report_dirs):
+    run = invented_run()
+    run["testCases"][0]["toolsCalled"] = [
+        {"name": "whoami", "inputParameters": {}, "output": "Invented short output"}
+    ]
+
+    _, _, page = write_report(tmp_path, run)
+
+    assert "Invented short output" in page
+    assert "more characters not shown" not in page
