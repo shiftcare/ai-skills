@@ -43,6 +43,7 @@ in the skill frontmatter.
 | [`shiftcare-staff-compliance-check`](skills/shiftcare-staff-compliance-check/SKILL.md) | Sweep staff credentials for expired, expiring, missing and unverified records, optionally against an advisory NDIS or Australian aged-care checklist. |
 | [`shiftcare-onboarding-check`](skills/shiftcare-onboarding-check/SKILL.md) | Read-only setup scorecard for a new account, with the next help article for each gap. |
 | [`shiftcare-daily-rundown`](skills/shiftcare-daily-rundown/SKILL.md) | Read-only daily sweep of yesterday's and today's shifts, grouped by urgency with a next step per finding. |
+| [`shiftcare-client-summary`](skills/shiftcare-client-summary/SKILL.md) | Summarise one client's recent profile, shifts, rostered schedule, progress-note coverage, and most frequently rostered staff. |
 | [`shiftcare-create-shift`](skills/shiftcare-create-shift/SKILL.md) | Create a one-off or recurring shift from a plain-language request, with mandatory confirmation before the write. |
 | [`shiftcare-cancel-shift`](skills/shiftcare-cancel-shift/SKILL.md) | Cancel a shift, choosing correctly between charging the client and not paying the carer. |
 | [`shiftcare-create-note`](skills/shiftcare-create-note/SKILL.md) | Write a note about a client, routing between a client communication and a shift progress note, with mandatory confirmation before the write. |
