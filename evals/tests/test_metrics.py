@@ -112,6 +112,14 @@ def test_skill_activation_scores_whether_observation_matches_expectation(calls, 
         (["whoami", "list_invoices"], 1),
         (["list_teams", "whoami"], 0),
         ([], 0),
+        # The skill instructs check_skill_compatibility before any ShiftCare data
+        # call, so it must not count as "the first call".
+        (["Skill", "check_skill_compatibility", "whoami", "list_teams"], 1),
+        (["check_skill_compatibility", "whoami", "list_clients"], 1),
+        # ...but it is not itself the read that has to follow whoami.
+        (["check_skill_compatibility", "whoami"], 0),
+        # A real server read outside the original four-tool set still counts.
+        (["whoami", "list_accounts"], 1),
     ],
 )
 def test_connection_protocol(names, expected):

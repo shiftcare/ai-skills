@@ -11,7 +11,20 @@ from deepeval.test_case import ToolCall
 
 
 SKILL_LOADING_TOOLS = {"Skill", "command_execution"}
-READ_TOOLS = set(json.loads(Path(__file__).with_name("read_tools.json").read_text())) - {"whoami"}
+ALLOWED_TOOLS = set(json.loads(Path(__file__).with_name("read_tools.json").read_text()))
+# Calls the skill instructs before any ShiftCare data call, so they must not count
+# as "the first call" when checking the connection protocol.
+PRELUDE_TOOLS = {"check_skill_compatibility"}
+
+
+def is_read_call(name):
+    """Whether a tool call satisfies the connection protocol's "then read" step.
+
+    Deliberately the harness allowlist rather than a name prefix: an agent can
+    only call what the runner permits, so anything outside this set is either a
+    write or a tool that does not exist, and neither should count as a read.
+    """
+    return name != "whoami" and name in ALLOWED_TOOLS
 TRUNCATION_MARKERS = (
     "exceeds maximum allowed tokens",
     "Output has been saved to",
@@ -161,7 +174,11 @@ class SkillActivation(BaseMetric):
 
 
 class ConnectionProtocol(BaseMetric):
-    """Deterministic check of the skill's Verify steps: whoami first, then at least one read."""
+    """Deterministic check of the skill's Verify steps: whoami first, then at least one read.
+
+    Only meaningful on the with-skill arm; the no-skill agent is never told this
+    protocol. `test_connection.py` is what enforces that.
+    """
 
     def __init__(self, tool_calls):
         self.tool_calls = tool_calls
@@ -172,10 +189,17 @@ class ConnectionProtocol(BaseMetric):
 
     def measure(self, test_case, *args, **kwargs):
         calls = [call["name"] for call in self.tool_calls if call["name"] not in SKILL_LOADING_TOOLS]
+        # The skill documents check_skill_compatibility as the first call of a task,
+        # so whoami has to be the first call for ShiftCare *data*, not the first MCP
+        # call outright. 14 of 20 with-skill results failed on this alone.
+        calls = [name for name in calls if name not in PRELUDE_TOOLS]
         problems = []
         if not calls or calls[0] != "whoami":
-            problems.append(f"first MCP call was {calls[0] if calls else 'nothing'}, expected whoami")
-        if not any(name in READ_TOOLS for name in calls[1:]):
+            problems.append(f"first ShiftCare call was {calls[0] if calls else 'nothing'}, expected whoami")
+        # Scoring against read_tools.json alone failed an agent that legitimately
+        # read list_accounts, but "any call at all" would let a write satisfy the
+        # step, so accept the allowlist plus anything named as a read.
+        if not any(is_read_call(name) for name in calls[1:]):
             problems.append("no read-only call after whoami")
         self.score = 0 if problems else 1
         self.reason = "; ".join(problems) if problems else f"whoami first, then {', '.join(calls[1:])}"

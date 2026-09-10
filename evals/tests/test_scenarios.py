@@ -17,7 +17,7 @@ def capture_scenario(monkeypatch, module_name, result, case_index=0, skill=None,
         workspaces={"with-skill": "/with-skill", "no-skill": "/no-skill"},
     )
     if module_name == "test_connection":
-        module.test_connection(skill=None, **kwargs)
+        module.test_connection(skill=skill, **kwargs)
     else:
         module.test_task(skill=skill, **kwargs)
     return captured[0]
@@ -186,3 +186,26 @@ def test_shift_requirements_reach_deepeval_as_scored_results(monkeypatch, scenar
     assert len(case.tools_called) == len(calls)
     assert len(case._trace_dict["children"]) == len(calls)
     assert case.actual_output == "Invented answer"
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected_count"),
+    [("shiftcare-mcp", 1), (None, 0)],
+)
+def test_connection_protocol_scored_only_with_installed_skill(
+    monkeypatch, skill, expected_count
+):
+    """ConnectionProtocol checks the Verify protocol only SKILL.md teaches, so the
+    no-skill arm must not be scored on it. All 20 no-skill results failed it in the
+    2026-09-10 matrix, 9 while answering well enough to pass Response quality."""
+    result = {
+        "answer": "Invented answer",
+        "toolCalls": [{"name": "whoami", "input": {}, "output": "ok"}],
+        "usage": {"inputTokens": 1, "outputTokens": 1, "costUsd": 0.01},
+        "durationMs": 1, "turns": 1,
+    }
+
+    _, metrics, _ = capture_scenario(monkeypatch, "test_connection", result, skill=skill)
+
+    protocol = [metric for metric in metrics if metric.__name__ == "Connection Protocol"]
+    assert len(protocol) == expected_count

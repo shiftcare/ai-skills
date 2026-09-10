@@ -98,6 +98,10 @@ def test_connection(case, skill, model, repeat, mcp, workspaces):
         ToolResultIntegrity(tool_calls),
         *agentic_metrics(judge, case["ask"]),
     ]
-    if case.get("whoami_first"):
+    # ConnectionProtocol checks the Verify protocol that only SKILL.md teaches, so
+    # running it on the no-skill arm scores the absence of instructions the agent
+    # never received: all 20 no-skill results failed it in the 2026-09-10 matrix,
+    # 9 of them while answering well enough to pass Response quality.
+    if case.get("whoami_first") and skill:
         metrics.append(ConnectionProtocol(tool_calls))
     assert_test(test_case, metrics, run_async=True)
