@@ -8,6 +8,11 @@ import pytest
 
 @pytest.mark.parametrize(("workers", "expected"), [(None, "4"), ("2", "2")])
 def test_run_script_uses_bounded_parallel_workers(tmp_path, workers, expected):
+    evals = tmp_path / "evals"
+    evals.mkdir()
+    shutil.copy(Path(__file__).parents[1] / "run.sh", evals / "run.sh")
+    for name in ("test_alpha.py", "test_beta.py", "test_gamma.py"):
+        (evals / name).write_text("")
     fake_uv = tmp_path / "uv"
     fake_uv.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
     fake_uv.chmod(0o755)
@@ -18,7 +23,7 @@ def test_run_script_uses_bounded_parallel_workers(tmp_path, workers, expected):
         env.pop("EVAL_WORKERS", None)
 
     completed = subprocess.run(
-        [Path(__file__).parents[1] / "run.sh", "-k", "connection"],
+        [evals / "run.sh", "-k", "connection"],
         capture_output=True,
         text=True,
         env=env,
@@ -27,9 +32,9 @@ def test_run_script_uses_bounded_parallel_workers(tmp_path, workers, expected):
 
     # run.sh also archives and reports after the run, so scope this to the
     # pytest invocation rather than asserting on the whole transcript.
-    assert completed.stdout.splitlines()[:10] == [
-        "run", "deepeval", "test", "run", "test_connection.py", "test_tasks.py",
-        "-n", expected, "-k", "connection",
+    assert completed.stdout.splitlines()[:11] == [
+        "run", "deepeval", "test", "run", "test_alpha.py", "test_beta.py",
+        "test_gamma.py", "-n", expected, "-k", "connection",
     ]
 
 

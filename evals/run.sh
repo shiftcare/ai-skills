@@ -7,7 +7,7 @@ export DEEPEVAL_UPDATE_WARNING_OPT_IN=0
 
 started=$(date +%s)
 status=0
-uv run deepeval test run test_connection.py test_tasks.py -n "${EVAL_WORKERS:-4}" "$@" || status=$?
+uv run deepeval test run test_*.py -n "${EVAL_WORKERS:-4}" "$@" || status=$?
 
 # DeepEval overwrites .latest_run_full.json on every run, so archiving is what
 # makes a run durable: report.py pools every file in ../runs, which is how a

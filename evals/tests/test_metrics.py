@@ -58,28 +58,31 @@ def test_tool_result_integrity_fails_truncated_output(output):
 
 
 @pytest.mark.parametrize(
-    ("call", "expected"),
+    ("call", "skill", "expected"),
     [
-        ({"name": "Skill", "input": {"skill": "shiftcare-mcp"}}, True),
+        ({"name": "Skill", "input": {"skill": "shiftcare-action-items"}}, "shiftcare-action-items", True),
         (
             {
                 "name": "command_execution",
-                "input": {"command": "sed -n '1,200p' skills/shiftcare-mcp/SKILL.md"},
+                "input": {"command": "sed -n '1,200p' skills/shiftcare-action-items/SKILL.md"},
             },
+            "shiftcare-action-items",
             True,
         ),
         (
             {
                 "name": "command_execution",
-                "input": {"command": "grep -r shiftcare-mcp ."},
+                "input": {"command": "grep -r shiftcare-action-items ."},
             },
+            "shiftcare-action-items",
             False,
         ),
-        ({"name": "whoami", "input": {}}, False),
+        ({"name": "Skill", "input": {"skill": "shiftcare-mcp"}}, "shiftcare-action-items", False),
+        ({"name": "whoami", "input": {}}, "shiftcare-action-items", False),
     ],
 )
-def test_loaded_shiftcare_mcp_detects_skill_loading_calls(call, expected):
-    assert metrics.loaded_shiftcare_mcp(call) is expected
+def test_loaded_skill_detects_skill_loading_calls(call, skill, expected):
+    assert metrics.loaded_skill(call, skill) is expected
 
 
 @pytest.mark.parametrize(
@@ -91,11 +94,19 @@ def test_loaded_shiftcare_mcp_detects_skill_loading_calls(call, expected):
     ],
 )
 def test_skill_activation_scores_whether_observation_matches_expectation(calls, expected, score):
-    metric = SkillActivation(calls, expected=expected)
+    metric = SkillActivation(calls, expected=expected, skill="shiftcare-mcp")
 
     assert metric.measure(TEST_CASE) == score
     assert metric.is_successful() == bool(score)
     assert metric.__name__ == "Skill Activation"
+
+
+def test_read_tool_allowlist_contains_only_reads():
+    assert all(
+        name.startswith(("list_", "get_"))
+        or name in {"whoami", "check_skill_compatibility"}
+        for name in metrics.ALLOWED_TOOLS
+    )
 
 
 

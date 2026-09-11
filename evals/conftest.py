@@ -1,6 +1,8 @@
 import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -43,7 +45,7 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.fixture(scope="session")
-def workspaces():
+def workspaces(mcp_preflight):
     completed = subprocess.run(
         ["node", "workspace.mjs"],
         cwd=EVALS_DIR,
@@ -56,16 +58,11 @@ def workspaces():
     return json.loads(completed.stdout)
 
 
-@pytest.fixture
-def mcp():
-    """Resolved per test on purpose. MCP access tokens expire after 300
-    seconds, so a session-scoped fixture hands every test after the first few
-    minutes an expired token and the agents silently lose their ShiftCare
-    tools. `auth.mjs token` reuses a token with more than 30 seconds left and
-    refreshes it otherwise, so per-test resolution costs one subprocess call."""
+def resolve_mcp():
+    """Raise auth failures so xdist can report them instead of losing an exit."""
     url = env_value("MCP_URL")
     if not url:
-        pytest.exit("MCP_URL is required in the environment or evals/.env")
+        raise RuntimeError("MCP_URL is required in the environment or evals/.env")
 
     token = env_value("MCP_TOKEN")
     if not token:
@@ -77,14 +74,71 @@ def mcp():
             timeout=60,
         )
         if completed.returncode:
-            pytest.exit(
+            raise RuntimeError(
                 completed.stderr.strip()
                 or "No saved login. Run: cd evals && node auth.mjs login"
             )
         token = completed.stdout.strip()
     if not token:
-        pytest.exit("No MCP token available. Run: cd evals && node auth.mjs login")
+        raise RuntimeError("No MCP token available. Run: cd evals && node auth.mjs login")
     return McpConfig(url=url, token=token)
+
+
+def probe_mcp(mcp):
+    """Catch rejected tokens before agents silently run without MCP tools."""
+    request = urllib.request.Request(
+        mcp["url"],
+        data=json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "evals-preflight", "version": "0"},
+                },
+            }
+        ).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {mcp['token']}",
+            # Cloudflare answers Python-urllib's default agent with 403.
+            "User-Agent": "shiftcare-evals-preflight/0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        status = error.code
+    except Exception as error:
+        raise RuntimeError(
+            f"MCP pre-flight failed: {error}; check MCP_URL and network access"
+        ) from error
+    if not 200 <= status < 300:
+        raise RuntimeError(
+            f"MCP pre-flight failed with HTTP {status}; check that the token is valid "
+            "and MCP_URL matches its region"
+        )
+
+
+@pytest.fixture(scope="session")
+def mcp_preflight():
+    """Probe once per worker so rejected auth becomes a visible setup error."""
+    probe_mcp(resolve_mcp())
+
+
+@pytest.fixture
+def mcp():
+    """Resolved per test on purpose. MCP access tokens expire after 300
+    seconds, so a session-scoped fixture hands every test after the first few
+    minutes an expired token and the agents silently lose their ShiftCare
+    tools. `auth.mjs token` reuses a token with more than 30 seconds left and
+    refreshes it otherwise, so per-test resolution costs one subprocess call."""
+    return resolve_mcp()
 
 
 INFRASTRUCTURE_ERRORS_BEFORE_EXIT = 3
@@ -104,11 +158,10 @@ def infrastructure_error(excinfo):
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """Flag scenario errors on the worker, where the exception is still in hand.
-    Only scenarios (anything taking the `model` fixture) count: a broken unit
-    test under tests/ is not an outage."""
+    """Flag scenario setup and call errors while the worker has the exception.
+    Unit tests do not take `model`, so their failures cannot stop an eval run."""
     report = (yield).get_result()
-    if call.when == "call" and "model" in item.fixturenames:
+    if call.when in ("setup", "call") and "model" in item.fixturenames:
         report.infrastructure_error = infrastructure_error(call.excinfo)
 
 
@@ -122,12 +175,16 @@ def pytest_runtest_logreport(report):
     this hook runs in the controller; `pytest.exit` from the worker-side hook
     trips an xdist internal error instead of a clean stop."""
     global consecutive_infrastructure_errors
-    if report.when != "call":
+    # xdist runs this hook on the workers as well; a worker that reaches the
+    # threshold first would exit itself and crash instead of stopping the run.
+    if os.environ.get("PYTEST_XDIST_WORKER") or report.when not in ("setup", "call"):
         return
     if getattr(report, "infrastructure_error", False):
         consecutive_infrastructure_errors += 1
-    else:
+    elif report.when == "call":
         consecutive_infrastructure_errors = 0
+    else:
+        return
     if consecutive_infrastructure_errors >= INFRASTRUCTURE_ERRORS_BEFORE_EXIT:
         pytest.exit(
             f"{consecutive_infrastructure_errors} consecutive infrastructure errors; "

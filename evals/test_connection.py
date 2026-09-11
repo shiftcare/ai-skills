@@ -17,6 +17,8 @@ from metrics import (
 from runners import run_agent
 
 
+SUITE = "Connection verification"
+SKILL = "shiftcare-mcp"
 CASES = [
     {
         "name": "connect and verify",
@@ -46,10 +48,10 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize("skill", ["shiftcare-mcp", None], ids=["with-skill", "no-skill"])
+@pytest.mark.parametrize("skill", [SKILL, None], ids=["with-skill", "no-skill"])
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
 def test_connection(case, skill, model, mcp, workspaces):
-    cwd = workspaces["with-skill" if skill else "no-skill"]
+    cwd = workspaces["skills"][skill] if skill else workspaces["no-skill"]
     result = run_agent(case["ask"], model, cwd, skill, mcp)
     tool_calls = result["toolCalls"]
 
@@ -60,7 +62,7 @@ def test_connection(case, skill, model, mcp, workspaces):
         tools_called=to_deepeval_tool_calls(tool_calls),
         expected_tools=[ToolCall(name=name) for name in case["expected_tools"]],
         additional_metadata={
-            "suite": "Connection verification",
+            "suite": SUITE,
             "case": case["name"],
             "model": model,
             "skillHash": skill_hash(skill),

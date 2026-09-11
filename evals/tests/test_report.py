@@ -7,11 +7,16 @@ from pathlib import Path
 
 import pytest
 
+import identity
 import report
 from report import main, normalize
 
 
 def invented_run():
+    spec = identity.suites()["Connection verification"]
+    current_skill_hash = identity.skill_hash(spec["skill"])
+    current_scenario_hash = identity.cases_hash(spec["file"])
+
     def result(name, variant, success, tokens, quality, reason):
         return {
             "name": name,
@@ -48,8 +53,8 @@ def invented_run():
                 "case": "connect and verify",
                 "model": "invented-model",
                 "skillVariant": variant,
-                "skillHash": "02d2fa320000" if variant == "With skill" else "none",
-                "scenarioHash": "2a151f81f9e7",
+                "skillHash": current_skill_hash if variant == "With skill" else "none",
+                "scenarioHash": current_scenario_hash,
                 "usage": {
                     "inputTokens": tokens - 10,
                     "outputTokens": 10,
@@ -259,42 +264,37 @@ def test_unscored_results_are_dropped_and_counted(tmp_path):
     visible = visible_html(page)
 
     assert "1 unscored results were dropped" in visible
-    assert f"{len(run['testCases']) - 1} results, 1 unscored dropped" in visible
+    assert f"{len(run['testCases']) - 1} current-tree results, 1 unscored dropped" in visible
     assert "<strong>1</strong> paired comparisons" in visible
     assert visible.count('class="result-detail"') == len(run["testCases"]) - 1
 
 
-def test_a_changed_skill_renders_as_a_labelled_before_and_after(tmp_path):
-    """A mixed skill hash is a finding, not an error: it means the skill changed
-    mid-accumulation, so the two must not be averaged together."""
+def test_report_omits_results_that_do_not_match_the_current_tree(tmp_path):
     run = invented_run()
-    before = run["testCases"][:2]
-    after = json.loads(json.dumps(before))
-    after[0]["metadata"]["skillHash"] = "9ab3c1de0000"
-    # Two run files, as two working trees produce: the no-skill control in each
-    # file has no hash of its own and is attributed to the skill it ran beside.
+    current = run["testCases"][:2]
+    outdated = json.loads(json.dumps(current))
+    outdated[0]["metadata"]["skillHash"] = "9ab3c1de0000"
+    outdated[0]["actualOutput"] = "Outdated result must not render"
+    legacy = json.loads(json.dumps(current))
+    for result in legacy:
+        result["metadata"].pop("skillHash")
+        result["metadata"].pop("scenarioHash")
+    legacy[0]["actualOutput"] = "Pre-hash result must not render"
     paths = []
-    for name, cases in (("before", before), ("after", after)):
+    for name, cases in (("current", current), ("outdated", outdated), ("legacy", legacy)):
         path = tmp_path / f"{name}.json"
         path.write_text(json.dumps({"testCases": cases}))
         paths.append(str(path))
     output = tmp_path / "report.html"
     main([*paths, "-o", str(output)])
     visible = visible_html(output.read_text())
-    overview = visible.split('id="overview-view"', 1)[1].split('id="comparisons-view"', 1)[0]
-    detail = visible.split('id="case-panel-c1"', 1)[1]
-
-    assert "skill 02d2fa320000" in visible
-    assert "skill 9ab3c1de0000" in visible
-    # Each version gets its own roll-up and its own sample: n restarts at 1 for
-    # the edited skill instead of pooling with the five-or-so results before it.
-    assert overview.count('<section class="version">') == 2
-    assert overview.count("<strong>1</strong> paired comparisons") == 2
-    assert "invented-model · skill 9ab3c1de0000 · scenarios 2a151f81f9e7 · With skill: <strong>n=1</strong>" in detail
-    assert "invented-model · skill 9ab3c1de0000 · scenarios 2a151f81f9e7 · No skill: <strong>n=1</strong>" in detail
-    # The no-skill control from each run belongs to that run's skill, so nothing
-    # is left over to report as an unavailable comparison.
-    assert "comparison unavailable" not in detail.split("<h2>Scenario results</h2>", 1)[0]
+    assert "Outdated result must not render" not in visible
+    assert "Pre-hash result must not render" not in visible
+    assert "skill 9ab3c1de0000" not in visible
+    assert visible.count('class="result-detail"') == 2
+    assert "<strong>1</strong> paired comparisons" in visible
+    assert "outdated.json</td><td>0</td><td>2</td>" in visible
+    assert "legacy.json</td><td>0</td><td>2</td>" in visible
 
 
 def test_report_summarizes_repeated_quality_before_overhead(tmp_path):
@@ -386,7 +386,7 @@ def test_report_accepts_wrapped_json_and_escapes_dynamic_content(tmp_path):
     assert 'id="source-data"' not in page
 
 
-def test_report_uses_legacy_names_and_writes_private_file(tmp_path):
+def test_report_parses_legacy_names_but_omits_pre_hash_results(tmp_path):
     run = invented_run()
     for test_case in run["testCases"]:
         test_case.pop("metadata")
@@ -394,13 +394,23 @@ def test_report_uses_legacy_names_and_writes_private_file(tmp_path):
     run["testCases"][1]["name"] = "legacy-model / no skill: connect and verify"
     run["testCases"][2]["name"] = "second-model: client lookup picks list_clients"
 
+    results, suites = normalize(run["testCases"])
+    assert [suite["name"] for suite in suites] == [
+        "Connection verification",
+        "Read-only tasks",
+    ]
+    assert [result["model"] for result in results] == [
+        "legacy-model",
+        "legacy-model",
+        "second-model",
+    ]
+
     _, output, page = write_report(tmp_path, run)
     visible = visible_html(page)
-
-    assert "Connection verification" in visible
-    assert "Read-only tasks" in visible
-    assert "connect and verify" in visible
-    assert "client lookup picks list_clients" in visible
+    assert "legacy-model" not in visible
+    assert "second-model" not in visible
+    assert "No results match the current working tree" in visible
+    assert "3 outdated or pre-hash results were omitted" in visible
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
 
 
@@ -536,6 +546,74 @@ def test_current_tree_hashes_are_stable_and_include_all_skill_files(tmp_path):
     assert report.cases_hash(scenario) == hashlib.sha256(canonical).hexdigest()[:12]
 
 
+def test_discovered_suite_feeds_current_tree_hashes(tmp_path, monkeypatch):
+    scenario = tmp_path / "test_invented.py"
+    scenario.write_text(
+        'SUITE = "Invented suite"\n'
+        'SKILL = "shiftcare-mcp"\n'
+        'CASES = [{"name": "invented case", "ask": "invented", '
+        '"expected_tools": ["whoami"], "quality": "invented"}]\n'
+    )
+    discovered = identity.suites(tmp_path)
+    assert discovered == {
+        "Invented suite": {"file": scenario, "skill": "shiftcare-mcp"}
+    }
+    scenario_hash = identity.cases_hash(scenario)
+    skill_hash = identity.skill_hash("shiftcare-mcp")
+    run = invented_run()
+    for result in run["testCases"]:
+        result["metadata"].update(
+            {
+                "suite": "Invented suite",
+                "scenarioHash": scenario_hash,
+                "skillHash": skill_hash
+                if result["metadata"]["skillVariant"] == "With skill"
+                else identity.NO_SKILL,
+            }
+        )
+    monkeypatch.setattr(report, "discover_suites", lambda: discovered)
+
+    _, _, page = write_report(tmp_path, run)
+
+    detail = visible_html(page).split('id="case-panel-c1"', 1)[1]
+    assert "Current working tree" in detail
+    assert "shiftcare-mcp" in detail
+    assert f"skill_hash={skill_hash}" in detail
+    assert f"scenario_hash={scenario_hash}" in detail
+
+
+def test_no_skill_fallback_uses_each_suites_current_skill_hash():
+    results = [
+        {
+            "suite": "Invented alpha",
+            "variant": "No skill",
+            "skill_hash": identity.NO_SKILL,
+            "scenario_hash": "scenario-alpha",
+        },
+        {
+            "suite": "Invented beta",
+            "variant": "No skill",
+            "skill_hash": identity.NO_SKILL,
+            "scenario_hash": "scenario-beta",
+        },
+    ]
+    current = {
+        "Invented alpha": ("scenario-alpha", "skill-alpha"),
+        "Invented beta": ("scenario-beta", "skill-beta"),
+    }
+
+    report.attribute_versions(results, [(Path("invented.json"), 2, 0)], current)
+
+    assert [result["skill_hash"] for result in results] == [
+        "skill-alpha",
+        "skill-beta",
+    ]
+    assert [result["version"] for result in results] == [
+        report.CURRENT_VERSION,
+        report.CURRENT_VERSION,
+    ]
+
+
 def test_report_rolls_up_matrix_and_suite_without_cross_case_pair_collisions(tmp_path):
     run = invented_run()
     first_pair = run["testCases"][:2]
@@ -569,7 +647,7 @@ def test_report_shows_case_samples_current_tree_hashes_and_low_sample_warning(tm
     assert "invented-model · No skill: <strong>n=1</strong>" in detail
     assert "Low sample count:" in detail
     assert "skill_hash=" in detail and "scenario_hash=" in detail
-    assert "cannot be verified against them" in detail
+    assert "omitted because they cannot be verified against the current tree" in detail
 
 
 def test_all_tables_contain_pathological_reasons_at_narrow_width(tmp_path):
@@ -598,7 +676,7 @@ def test_report_pools_every_archived_run_by_default(tmp_path, report_dirs):
 
     page = next(reports.glob("*.html")).read_text()
     visible = visible_html(page)
-    assert "these 2 runs combined, totalling 6 results" in visible
+    assert "These 2 runs contribute 6 current-tree results" in visible
     assert "2026-01-01-000000.json" in visible
     assert "2026-01-02-000000.json" in visible
 

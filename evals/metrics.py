@@ -31,11 +31,11 @@ TRUNCATION_MARKERS = (
 )
 
 
-def loaded_shiftcare_mcp(call):
+def loaded_skill(call, skill):
     if call["name"] == "Skill":
-        return "shiftcare-mcp" in json.dumps(call.get("input") or {})
+        return skill in json.dumps(call.get("input") or {})
     if call["name"] == "command_execution":
-        return "shiftcare-mcp/SKILL.md" in json.dumps(call.get("input") or {})
+        return f"{skill}/SKILL.md" in json.dumps(call.get("input") or {})
     return False
 
 
@@ -146,16 +146,17 @@ class ToolResultIntegrity(BaseMetric):
 
 
 class SkillActivation(BaseMetric):
-    def __init__(self, tool_calls, expected):
+    def __init__(self, tool_calls, expected, skill):
         self.tool_calls = tool_calls
         self.expected = expected
+        self.skill = skill
         self.threshold = 1
         self.async_mode = False
         self.include_reason = True
         self.evaluation_model = "deterministic"
 
     def measure(self, test_case, *args, **kwargs):
-        observed = any(loaded_shiftcare_mcp(call) for call in self.tool_calls)
+        observed = any(loaded_skill(call, self.skill) for call in self.tool_calls)
         self.score = int(observed == self.expected)
         self.reason = f"Skill activation was {observed}; expected {self.expected}."
         self.success = self.is_successful()
