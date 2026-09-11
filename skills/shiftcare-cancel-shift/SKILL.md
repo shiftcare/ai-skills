@@ -4,7 +4,7 @@ description: Cancel a ShiftCare shift, choosing correctly between "cancelled by 
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Cancel a ShiftCare shift
@@ -54,7 +54,7 @@ point the user there if they are unsure, and stop rather than choosing for them.
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to this skill's frontmatter `name` and `skill_version` set to its `metadata.version`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-cancel-shift` and `skill_version` set to `1.0.1`.
 
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 

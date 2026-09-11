@@ -4,7 +4,7 @@ description: Understand ShiftCare domain concepts and select or combine ShiftCar
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Understand ShiftCare concepts and tools
@@ -13,7 +13,7 @@ Use this mental model to translate a user's request into the smallest safe seque
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to this skill's frontmatter `name` and `skill_version` set to its `metadata.version`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-basics` and `skill_version` set to `1.1.1`.
 
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 

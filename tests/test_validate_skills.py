@@ -29,7 +29,7 @@ class ValidateSkillsTest(unittest.TestCase):
                 "[Sibling][sibling]\n\n[sibling]: sibling.md\n"
             )
             (valid / "references" / "sibling.md").write_text("# Sibling\n")
-            (valid / "SKILL.md").write_text(
+            valid_skill = (
                 """---
 name: shiftcare-valid
 description: A valid test skill.
@@ -39,8 +39,9 @@ metadata:
 See [the guide](references/guide.md).
 Run `npx skills update shiftcare-valid` when an update is required.
 """
-                + COMPATIBILITY_TEMPLATE.read_text().format(skill="shiftcare-valid")
+                + COMPATIBILITY_TEMPLATE.read_text().format(skill="shiftcare-valid", version="1.2.3")
             )
+            (valid / "SKILL.md").write_text(valid_skill)
             (repository / "public_ai_skills.yml").write_text(
                 """shared:
   skills:
@@ -51,10 +52,23 @@ Run `npx skills update shiftcare-valid` when an update is required.
             )
             self.assertEqual(validate_repository(skills), [])
 
+            # The Skill tool strips YAML frontmatter before the body reaches
+            # the agent, so a skill cannot tell the agent to read its own
+            # metadata.version. The template carries the literal version, and
+            # this is what stops that literal drifting from the frontmatter.
             (valid / "SKILL.md").write_text(
-                (valid / "SKILL.md")
-                .read_text()
-                .replace("stop and warn", "stop and tell")
+                valid_skill.replace(
+                    "`skill_version` set to `1.2.3`",
+                    "`skill_version` set to `9.9.9`",
+                )
+            )
+            self.assertIn(
+                "compatibility check does not match scripts/compatibility_check.md",
+                "\n".join(validate_repository(skills)),
+            )
+
+            (valid / "SKILL.md").write_text(
+                valid_skill.replace("stop and warn", "stop and tell")
             )
             self.assertIn(
                 "compatibility check does not match scripts/compatibility_check.md",

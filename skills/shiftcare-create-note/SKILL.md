@@ -4,7 +4,7 @@ description: Write a note about a ShiftCare client, choosing correctly between a
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Write a note about a ShiftCare client
@@ -47,7 +47,7 @@ Three consequences of that table shape the rest of this skill:
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to this skill's frontmatter `name` and `skill_version` set to its `metadata.version`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-create-note` and `skill_version` set to `1.0.1`.
 
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 
