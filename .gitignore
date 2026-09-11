@@ -4,3 +4,11 @@ skills-lock.json
 # installer output from testing `npx skills add` inside this checkout
 .agents/
 .claude/skills/
+.env
+.auth/
+.deepeval/
+evals/.workspace/
+node_modules/
+.venv/
+__pycache__/
+!evals/.nvmrc

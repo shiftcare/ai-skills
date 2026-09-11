@@ -1,0 +1,4 @@
+# Archived run data contains live prompts, answers, tool outputs, and judge
+# reasons. Keep the directory, never the contents.
+*
+!.gitignore

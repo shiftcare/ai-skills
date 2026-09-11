@@ -1,0 +1,9 @@
+[
+  "check_skill_compatibility",
+  "whoami",
+  "list_teams",
+  "list_clients",
+  "list_shifts",
+  "list_invoices",
+  "list_accounts"
+]
