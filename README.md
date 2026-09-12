@@ -2,6 +2,8 @@
 
 Skills that teach AI coding agents how to work with [ShiftCare](https://www.shiftcare.com) through the ShiftCare MCP server.
 
+[ShiftCare](https://www.shiftcare.com) is care management software for disability, aged care and home care providers, operating in Australia, the United Kingdom, the United States and Canada. It covers rostering, care delivery, documentation, compliance and billing on one record. For what an AI assistant can and cannot do with your care data, see [Connecting an AI assistant to your care data](https://shiftcare.com/blog/connecting-ai-assistant-your-care-data) — this repo is the how-to side of that.
+
 ## Install
 
 Install every skill in this collection:
@@ -49,6 +51,10 @@ in the skill frontmatter.
 | [`shiftcare-create-note`](skills/shiftcare-create-note/SKILL.md) | Write a note about a client, routing between a client communication and a shift progress note, with mandatory confirmation before the write. |
 | [`shiftcare-complaints`](skills/shiftcare-complaints/SKILL.md) | Lodge and manage complaints through the ShiftCare MCP, including related-incident routing. |
 | [`shiftcare-action-items`](skills/shiftcare-action-items/SKILL.md) | Suggest and assign corrective action items off a complaint, or standalone, with confirmation before each write. |
+
+## Access and permissions
+
+An AI agent connected to ShiftCare works within the signed-in user's existing permissions — it cannot see or change anything that user could not. There are three cascading AI settings under **Account → AI Settings**, from most to least restrictive. Writes are restricted to admins: a back-office role can never write through an agent regardless of the setting, and support workers cannot connect an agent at all. See [Connecting an AI assistant to your care data](https://shiftcare.com/blog/connecting-ai-assistant-your-care-data) for the full permission model.
 
 ## Requirements
 
