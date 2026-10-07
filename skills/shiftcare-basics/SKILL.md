@@ -1,10 +1,10 @@
 ---
 name: shiftcare-basics
-description: Understand ShiftCare domain concepts and select or combine ShiftCare MCP tools for rostering, clients, staff, care plans, notes, leave, invoicing, and related workflows. Use after the MCP connection exists; connection setup and authentication troubleshooting are out of scope.
+description: Understand ShiftCare domain concepts and select or combine ShiftCare MCP tools for rostering, clients, staff, care plans, notes, leave, quotes, invoicing, and related workflows. Use after the MCP connection exists; connection setup and authentication troubleshooting are out of scope.
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # Understand ShiftCare concepts and tools
@@ -13,7 +13,7 @@ Use this mental model to translate a user's request into the smallest safe seque
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-basics` and `skill_version` set to `1.1.1`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-basics` and `skill_version` set to `1.2.0`.
 
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 
@@ -50,6 +50,7 @@ Account
 └── client
     ├── care plans ── focus areas ── goals ── scheduled tasks
     ├── funds
+    ├── quotes ── funding groups ── service line items
     └── communications
 ```
 
@@ -150,6 +151,31 @@ Customers may use shift note, progress note, and client note interchangeably, bu
 Confirm the intended record type before writing. These creates are non-idempotent: after an uncertain result, search/read before considering another call.
 
 Complaints have a status workflow. Use `list_complaints`/`get_complaint` before `create_complaint` or `update_complaint_status`, and confirm the next transition and outcome. Incidents are a separate sensitive record family read with `list_incidents`; do not treat an incident-category note as proof that a separate incident record exists.
+
+## Quotes
+
+A **quote** proposes services and their value for a client over a stated period. Its funding groups contain service line items. It is separate from an invoice, a payment, and delivered or rostered work; an accepted quote alone does not prove that shifts exist, services were delivered, or money was received.
+
+Quote lifecycle and archival are separate:
+
+- `draft`: not yet sent.
+- `awaiting_approved`: awaiting approval or signatures.
+- `awaiting_admin_approval` / `awaiting_client_approval`: identifies whose approval or signature is pending.
+- `accepted` / `declined`: client outcomes.
+- `expired`: no longer valid.
+
+Use `list_quotes` to find quote IDs and report totals, client, status, period, and expiry. Filter by client, partial quote number, status, or inclusive created/updated calendar-date ranges in the account's time zone. The default is newest quote ID first and unarchived quotes only; `archived=true` returns archived quotes only, so read both sets when the request includes all quotes. This filter concerns the quote, not whether its client is archived. Use `include_metadata=true` and follow pagination for complete reporting; do not treat the first page as the whole pipeline or sum different currencies together.
+
+Use `get_quote` with the returned `quote_id` for one active or archived quote's `item_groups` and `line_items`: funding names/categories, service/price-book names, service item codes, descriptions, quantities, ratios, rates, discounts, and totals. Keep each line with its parent funding group when aggregating by category or service.
+
+- `*_in_cents` amounts are integer minor currency units (cents/pence) in the accompanying ISO `currency`; divide by 100 for display. Null means unavailable or not applicable, not zero. `discount_percent` is out of 100.
+- `line_total_in_cents` is the stored pre-discount line amount; `total_after_discount_in_cents` is the funding-group amount after discounts and before quote-level tax. `total_in_cents` is the quote total after discounts and tax, so it need not equal the sum of line or group totals.
+- Unit rates, service item codes, fund names/categories, and `fund_allocation_in_cents` reflect current referenced data. Do not reconstruct historical quoted amounts from current rates; use stored line and quote totals as authoritative. Fund allocation is monetary only for `dollars` funds; hours/units allocations are not money.
+- `balance_in_cents` is the balance stored on the quote group, not the fund's live remaining balance. Use `get_client_fund_balance` for the latter.
+
+Quote reads are permission-scoped. An empty list does not prove no quotes exist; a detail 404 does not distinguish a malformed, missing, or inaccessible ID. A 403 indicates quote access/configuration restrictions; a 422 for account credentials can mean no usable account owner. Report the limitation rather than retrying unchanged requests.
+
+These tools only read quotes. For creating, editing, sending, accepting/declining, archiving, forms, recipients, terms, or generated documents, direct the user to the ShiftCare interface; do not invent a quote write tool or infer unavailable content.
 
 ## Billing, staff pay, and invoices
 
