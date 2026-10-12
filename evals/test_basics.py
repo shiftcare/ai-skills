@@ -44,16 +44,17 @@ CASES = [
             "Show its status, total, funding groups, and service lines. "
             "Does an accepted quote mean those services were delivered and paid for?"
         ),
-        "expected_tools": ["list_quotes", "get_quote"],
+        "expected_tools": ["list_quotes"],
         "quality": (
-            "Discovers a quote with list_quotes and passes its returned id as quote_id "
-            "to get_quote; reports only that quote's returned status, total with currency, "
+            "Uses list_quotes for discovery. When a quote id is returned, passes it as "
+            "quote_id to get_quote; reports only that quote's returned status, total with currency, "
             "funding groups, and service lines without inventing missing data. "
             "Treats accepted quote value as proposed services, not proof of delivered "
             "services, invoiced revenue, or received payments. Converts cents/pence "
             "correctly and uses stored totals rather than rebuilding them from current "
-            "rates. If no quote is visible or access fails, states the limitation "
-            "without fabricating a quote or guessing an id."
+            "rates. If discovery returns no quote id or fails, stops without calling "
+            "get_quote and states the limitation without fabricating a quote or guessing "
+            "an id. If the detail read fails, reports that limitation."
         ),
         "activates": True,
     },
