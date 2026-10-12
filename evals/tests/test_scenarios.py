@@ -155,6 +155,26 @@ def test_empty_expected_tools_skips_tool_correctness(monkeypatch):
     assert "Tool Correctness" not in evaluate_case(monkeypatch, case)
 
 
+@pytest.mark.parametrize("is_error", [False, True], ids=["empty", "access-failure"])
+def test_quote_discovery_without_an_id_does_not_require_detail(monkeypatch, is_error):
+    module = import_module("test_basics")
+    case_index = next(
+        index for index, case in enumerate(module.CASES)
+        if case["name"] == "quote questions route to list and detail without claiming revenue"
+    )
+    result = invented_result([
+        {"name": "list_quotes", "input": {}, "output": [], "isError": is_error}
+    ])
+    case, metrics, _ = capture_scenario(
+        monkeypatch, module.SUITE, result, case_index=case_index, skill=module.SKILL
+    )
+    metric = next(item for item in metrics if item.__name__ == "Tool Correctness")
+
+    metric.measure(case)
+    assert metric.score == 1
+    assert metric.is_successful()
+
+
 def test_team_lookup_case_is_bounded():
     assert {
         "name": "team lookup returns up to five teams",
