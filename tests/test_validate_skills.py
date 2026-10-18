@@ -7,10 +7,16 @@ from scripts.validate_skills import COMPATIBILITY_TEMPLATE, validate_repository
 
 class ValidateSkillsTest(unittest.TestCase):
     def test_compatibility_check_allows_servers_without_the_tool(self):
+        template = COMPATIBILITY_TEMPLATE.read_text()
         self.assertIn(
-            "If `check_skill_compatibility` is not available, warn the user that "
+            "If `check_skill_compatibility` is not in the tool list, call "
+            "`search_tools` with the query `check skill compatibility`",
+            template,
+        )
+        self.assertIn(
+            "If neither route offers it, warn the user that "
             "compatibility could not be checked and continue.",
-            COMPATIBILITY_TEMPLATE.read_text(),
+            template,
         )
 
     def test_repository_policy_checks(self):
