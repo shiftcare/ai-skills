@@ -4,7 +4,7 @@ description: Lodge, triage and progress complaints in ShiftCare through the comp
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.2.1"
+  version: "1.2.2"
 ---
 
 # Manage ShiftCare complaints
@@ -15,9 +15,9 @@ Use this skill to record a complaint accurately, safely, and without deciding le
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-complaints` and `skill_version` set to `1.2.1`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-complaints` and `skill_version` set to `1.2.2`.
 
-If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
+If `check_skill_compatibility` is not in the tool list, call `search_tools` with the query `check skill compatibility` and run the match through the dispatcher named in its `call_with`, usually `call_read_tool`. If neither route offers it, warn the user that compatibility could not be checked and continue.
 
 - `up_to_date`: continue.
 - `update_available`: continue, tell the user an update is available, and show `npx skills update shiftcare-complaints`.
