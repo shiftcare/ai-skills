@@ -28,6 +28,8 @@ Once the server's tools are available, call `check_skill_compatibility` once per
 
 If `check_skill_compatibility` is not in the tool list, call `search_tools` with the query `check skill compatibility` and run the match through the dispatcher named in its `call_with`, usually `call_read_tool`. If neither route offers it, warn the user that compatibility could not be checked and continue.
 
+Some servers list only a few tools and return the rest from `search_tools`. In this skill, a tool is **available** when it is in the tool list or `search_tools` returns it for the request. Run a returned tool through the dispatcher named in its `call_with`, under the same rules as a listed tool, including confirmation before any write.
+
 - `up_to_date`: continue.
 - `update_available`: continue, tell the user an update is available, and show `npx skills update shiftcare-action-items`.
 - `update_required`: stop and show `npx skills update shiftcare-action-items`.
@@ -51,7 +53,7 @@ account, ask which one before resolving any name.
   fails, say the suggesting and reading are still available and offer those. Enabling writes is
   **Account → AI Settings → Allow Write Actions**, and only an Admin can do it.
 
-**Then check the tool list, before resolving anything.** Action item tools are exposed per tool
+**Then check which tools are available, before resolving anything.** Action item tools are exposed per tool
 and per account, independently of the flags above: a connection can report `admin` with writes
 enabled and still expose none of them, or expose `list_action_items` but not
 `create_action_item`. Confirm the tool you will need is present before promising anything. If

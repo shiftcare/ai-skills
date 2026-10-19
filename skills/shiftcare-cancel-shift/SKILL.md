@@ -58,6 +58,8 @@ Once the server's tools are available, call `check_skill_compatibility` once per
 
 If `check_skill_compatibility` is not in the tool list, call `search_tools` with the query `check skill compatibility` and run the match through the dispatcher named in its `call_with`, usually `call_read_tool`. If neither route offers it, warn the user that compatibility could not be checked and continue.
 
+Some servers list only a few tools and return the rest from `search_tools`. In this skill, a tool is **available** when it is in the tool list or `search_tools` returns it for the request. Run a returned tool through the dispatcher named in its `call_with`, under the same rules as a listed tool, including confirmation before any write.
+
 - `up_to_date`: continue.
 - `update_available`: continue, tell the user an update is available, and show `npx skills update shiftcare-cancel-shift`.
 - `update_required`: stop and show `npx skills update shiftcare-cancel-shift`.
@@ -81,7 +83,7 @@ true` does **not** mean cancel_shift_with_charge is available: tool exposure is 
 independently of the account's Allow Write Actions setting. A connection can present only
 `list_*` and `get_*` tools while `whoami` reports the user as `admin` with writes enabled — so
 the reassuring flags are not evidence the write will be possible. Check that `cancel_shift_with_charge` and `cancel_shift_without_charge`
-is in the tool list. If it is missing, say that this account's connection does not expose
+is available. If it is missing, say that this account's connection does not expose
 shift cancellation and stop. Do not blame the account setting, and do not walk the user
 through the read-only steps first — the whole task is impossible, and finding that out after
 they have chosen a carer and a time wastes their effort.
