@@ -28,10 +28,13 @@ CASES = [
             "For tomorrow, choose one client who has at least one scheduled shift and "
             "tell me who is rostered on for up to five of that client's shifts."
         ),
-        "expected_tools": ["list_shifts", "list_shift_staffs"],
+        # Staff can come from list_shifts include_staff or list_shift_staffs, so only
+        # the shift lookup is required; the rubric checks the staff are real.
+        "expected_tools": ["list_shifts"],
         "quality": (
             "Uses tomorrow in the account time zone and reports no more than five real "
-            "shifts for one client, naming only staff returned for each shift; does not "
+            "shifts for one client, naming only staff returned for each shift by "
+            "list_shifts with include_staff or by list_shift_staffs; does not "
             "fabricate shifts, clients, or staff."
         ),
         "activates": True,

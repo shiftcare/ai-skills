@@ -93,7 +93,7 @@ A group shift can have several clients and staff. Client attendance, billing con
 
 Key routing:
 
-- Discover work with `list_shifts`, using an explicit date range, and inspect assignments with `list_shift_staffs`.
+- Discover work with `list_shifts`, using an explicit date range. For who is rostered across several shifts, send `include_staff` where the schema offers it; each entry's `id` is the staff ID and `worker_id` the assignment ID. Otherwise inspect assignments with `list_shift_staffs`, one shift per call.
 - Read advertised vacancies with `list_job_board_postings`; inspect each row's `shift_id` rather than treating its opening `id` as a shift ID.
 - Create one occurrence with `create_shift`; use `create_recurring_shift` for a series. Verify generated occurrences with `list_shifts` over the series range, filtered by the returned `program_id`.
 - Use `update_shift` for partial edits. Supplying client or staff ID arrays replaces the complete assignment list, so include every assignment that should remain.
