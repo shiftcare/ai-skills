@@ -1,4 +1,5 @@
 [
+  "call_read_tool",
   "check_skill_compatibility",
   "get_action_item",
   "get_care_plan",
@@ -46,5 +47,6 @@
   "list_tasks",
   "list_teams",
   "list_timesheets",
+  "search_tools",
   "whoami"
 ]

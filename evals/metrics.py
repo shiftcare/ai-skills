@@ -13,8 +13,9 @@ from deepeval.test_case import ToolCall
 SKILL_LOADING_TOOLS = {"Skill", "command_execution"}
 ALLOWED_TOOLS = set(json.loads(Path(__file__).with_name("read_tools.json").read_text()))
 # Calls the skill instructs before any ShiftCare data call, so they must not count
-# as "the first call" when checking the connection protocol.
-PRELUDE_TOOLS = {"check_skill_compatibility"}
+# as "the first call" when checking the connection protocol. search_tools finds
+# check_skill_compatibility when the server lists only its discovery tools.
+PRELUDE_TOOLS = {"check_skill_compatibility", "search_tools"}
 
 
 def is_read_call(name):

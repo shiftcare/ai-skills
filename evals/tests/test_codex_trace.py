@@ -101,3 +101,22 @@ def test_codex_run_times_out_like_the_claude_runner(monkeypatch, tmp_path):
     codex.run("Invented prompt", "invented-model", str(tmp_path / "with-skill"), None)
 
     assert captured["timeout"] == 600
+
+
+def test_dispatched_calls_are_recorded_under_the_tool_they_ran(monkeypatch):
+    import runners
+
+    monkeypatch.setattr(runners, "_run", lambda *args: {"toolCalls": [
+        {"name": "search_tools", "input": {"query": "roster"}, "output": "[]", "isError": False},
+        {"name": "call_read_tool", "input": {"name": "list_shifts", "arguments": {"from_date": "2026-01-01"}},
+         "output": "[]", "isError": False},
+        {"name": "call_read_tool", "input": {}, "output": None, "isError": True},
+    ]})
+
+    calls = runners.run_agent("Invented prompt", "invented-model", "/invented", None, None)["toolCalls"]
+
+    assert [(call["name"], call["input"]) for call in calls] == [
+        ("search_tools", {"query": "roster"}),
+        ("list_shifts", {"from_date": "2026-01-01"}),
+        ("call_read_tool", {}),
+    ]

@@ -104,7 +104,8 @@ def test_skill_activation_scores_whether_observation_matches_expectation(calls, 
 def test_read_tool_allowlist_contains_only_reads():
     assert all(
         name.startswith(("list_", "get_"))
-        or name in {"whoami", "check_skill_compatibility"}
+        # call_read_tool runs read-only tools only; the server sends writes to call_write_tool.
+        or name in {"whoami", "check_skill_compatibility", "search_tools", "call_read_tool"}
         for name in metrics.ALLOWED_TOOLS
     )
 
