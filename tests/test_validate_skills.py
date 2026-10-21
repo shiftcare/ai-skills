@@ -74,7 +74,7 @@ Run `npx skills update shiftcare-valid` when an update is required.
             )
 
             (valid / "SKILL.md").write_text(
-                valid_skill.replace("stop and warn", "stop and tell")
+                valid_skill.replace("continue, and warn", "continue, and tell")
             )
             self.assertIn(
                 "compatibility check does not match scripts/compatibility_check.md",
