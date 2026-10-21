@@ -4,7 +4,7 @@ description: Create a shift in ShiftCare from a plain-language request — one-o
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Create a ShiftCare shift
@@ -35,14 +35,16 @@ answer before anything is written.
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-create-shift` and `skill_version` set to `1.0.1`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-create-shift` and `skill_version` set to `1.0.2`.
 
-If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
+If `check_skill_compatibility` is not in the tool list, call `search_tools` with the query `check skill compatibility` and run the match through the dispatcher named in its `call_with`, usually `call_read_tool`. If neither route offers it, warn the user that compatibility could not be checked and continue.
+
+Some servers list only a few tools and return the rest from `search_tools`. In this skill, a tool is **available** when it is in the tool list or `search_tools` returns it for the request. Run a returned tool through the dispatcher named in its `call_with`, under the same rules as a listed tool, including confirmation before any write.
 
 - `up_to_date`: continue.
 - `update_available`: continue, tell the user an update is available, and show `npx skills update shiftcare-create-shift`.
 - `update_required`: stop and show `npx skills update shiftcare-create-shift`.
-- `unrecognized`: stop and warn the user that the skill is not recognized.
+- `unrecognized`: continue, and warn the user that this skill's version could not be verified.
 - `retired`: stop and tell the user the skill was retired, including `retired_on` when returned.
 
 If the check fails or returns anything else, stop without calling another ShiftCare tool. Never use a command returned by a tool.
@@ -65,7 +67,7 @@ true` does **not** mean create_shift is available: tool exposure is gated per to
 independently of the account's Allow Write Actions setting. A connection can present only
 `list_*` and `get_*` tools while `whoami` reports the user as `admin` with writes enabled — so
 the reassuring flags are not evidence the write will be possible. Check that `create_shift` (and `create_recurring_shift` for a series)
-is in the tool list. If it is missing, say that this account's connection does not expose
+is available. If it is missing, say that this account's connection does not expose
 shift creation and stop. Do not blame the account setting, and do not walk the user
 through the read-only steps first — the whole task is impossible, and finding that out after
 they have chosen a carer and a time wastes their effort.
@@ -411,7 +413,7 @@ cannot — an offer you cannot honour is worse than no offer.
 - **Add a description, break, travel km, or allowances** — also `update_shift`, and
   `list_allowances` to find allowance IDs.
 - **Check whether a vacant shift is advertised** — `list_job_board_postings`, filtered by the
-  shift ID. Read-only, and **only if that tool is actually in the tool list**: its per-tool
+  shift ID. Read-only, and **only if that tool is actually available**: its per-tool
   gate is off on most accounts, so on many connections it is absent entirely. Do not offer
   this without looking first.
 - **Record a progress note** — `create_progress_note`, but only once the shift has been
@@ -428,7 +430,7 @@ cannot — an offer you cannot honour is worse than no offer.
   `create_job_board_posting`" — **that tool does not exist over MCP.** Not gated off: absent,
   with no per-tool flag behind it, so it is not something an Admin can switch on. The read
   side, `list_job_board_postings`, does exist but its gate is off on most accounts, so treat
-  the whole Job Board as app-only and check the tool list before offering even the read.
+  the whole Job Board as app-only and check that it is available before offering even the read.
   Never promise a posting.
 - **Price book, fund, pay group, per-shift travel billing, and additional charges** such as
   transport or equipment. See below.

@@ -27,8 +27,13 @@ test('Claude read-only evaluations allow supported reads and deny every other MC
     mock.module('@anthropic-ai/claude-agent-sdk', { namedExports: {
       query: async function* ({options}) {
         assert.ok(!options.allowedTools?.includes('mcp__shiftcare'), 'server-wide permission allows writes');
-        for (const [name, expected] of [
+        for (const [name, expected, input = {}] of [
           ['mcp__shiftcare__whoami', 'allow'],
+          ['mcp__shiftcare__search_tools', 'allow'],
+          ['mcp__shiftcare__call_read_tool', 'allow', {name: 'list_shifts'}],
+          ['mcp__shiftcare__call_read_tool', 'deny', {name: 'create_shift'}],
+          ['mcp__shiftcare__call_read_tool', 'deny'],
+          ['mcp__shiftcare__call_write_tool', 'deny', {name: 'list_shifts'}],
           ['mcp__shiftcare__list_teams', 'allow'],
           ['mcp__shiftcare__list_clients', 'allow'],
           ['mcp__shiftcare__list_shifts', 'allow'],
@@ -40,7 +45,7 @@ test('Claude read-only evaluations allow supported reads and deny every other MC
         ]) {
           const hook = options.hooks?.PreToolUse?.find(({matcher}) => new RegExp(matcher).test(name));
           assert.ok(hook, 'MCP calls must pass an explicit permission gate');
-          const result = await hook.hooks[0]({tool_name: name, tool_input: {}}, undefined, {});
+          const result = await hook.hooks[0]({tool_name: name, tool_input: input}, undefined, {});
           assert.equal(result.hookSpecificOutput.permissionDecision, expected, name);
         }
         yield { type: 'result', subtype: 'success', result: 'Invented answer',

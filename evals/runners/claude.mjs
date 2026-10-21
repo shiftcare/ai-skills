@@ -2,8 +2,14 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-const readTools = new Set(JSON.parse(readFileSync(new URL('../read_tools.json', import.meta.url)))
-  .map((name) => `mcp__shiftcare__${name}`));
+const readToolNames = new Set(JSON.parse(readFileSync(new URL('../read_tools.json', import.meta.url))));
+
+// A dispatched call is allowed only when the tool it runs is itself allowlisted.
+export function isAllowedTool(toolName, toolInput) {
+  const name = toolName.replace(/^mcp__shiftcare__/, '');
+  if (name === 'call_read_tool') return readToolNames.has(toolInput?.name);
+  return toolName.startsWith('mcp__shiftcare__') && readToolNames.has(name);
+}
 
 // Local calendar date, matching what the agent's own environment reports.
 const localDate = () => new Date().toLocaleDateString('en-CA');
@@ -61,10 +67,10 @@ export async function runClaude({ prompt, model, cwd, skill, mcp }) {
       : 'Answer the evaluation prompt directly. Return only the requested output.',
     ...(mcp ? {
       // Run before permissions so project allow rules cannot approve MCP writes.
-      hooks: { PreToolUse: [{ matcher: '^mcp__', hooks: [async ({ tool_name }) => ({
+      hooks: { PreToolUse: [{ matcher: '^mcp__', hooks: [async ({ tool_name, tool_input }) => ({
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
-          permissionDecision: readTools.has(tool_name) ? 'allow' : 'deny',
+          permissionDecision: isAllowedTool(tool_name, tool_input) ? 'allow' : 'deny',
           permissionDecisionReason: 'Evaluations permit only the supported read tools.',
         },
       })] }] },
