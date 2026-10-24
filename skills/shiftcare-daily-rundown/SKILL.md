@@ -4,7 +4,7 @@ description: Sweep yesterday's and today's ShiftCare shifts and report what need
 license: Apache-2.0
 metadata:
   author: shiftcare
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # ShiftCare daily rundown
@@ -34,7 +34,7 @@ line, offer to widen the window, and stop.
 
 ## Check compatibility
 
-Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-daily-rundown` and `skill_version` set to `1.0.1`.
+Once the server's tools are available, call `check_skill_compatibility` once per task before any other ShiftCare tool, with `skill` set to `shiftcare-daily-rundown` and `skill_version` set to `1.0.2`.
 
 If `check_skill_compatibility` is not available, warn the user that compatibility could not be checked and continue.
 
@@ -123,9 +123,13 @@ and say so rather than guessing at its findings.
 window was truncated** rather than burning the context on a large roster.
 
 Keep per shift: `id`, `start_at`, `end_at`, `break_time`, `km`, `published`, `pending`,
-`is_approved`, `cancelled_at`, `address`, `url`, and each client's name and `line_items`.
+`is_approved`, `cancelled_at`, `address`, `url`, and each client's `id`, name, `absent_reason` and `line_items`.
 
-**Drop every shift with a non-null `cancelled_at` before any other check.** A cancelled
+**Drop every cancelled shift before any other check.** A shift is cancelled when
+`cancelled_at` is non-null (cancelled without charge) **or** every client on it has an
+`absent_reason` (cancelled by client with charge, which leaves `cancelled_at` null on the
+shift; see `shiftcare-cancel-shift`). If only some clients on a group shift have an
+`absent_reason`, keep the shift but leave those clients out of the later checks. A cancelled
 shift is not vacant, not a missed clock-in, and not a break breach. Cancellation is not
 deletion, so they do come back in the list.
 
